@@ -1,0 +1,191 @@
+/* integrad-dashboard\src\components\Sidebar.css */
+
+/* CONTENEDOR PRINCIPAL */
+.sidebar {
+  width: 260px;
+  background-color: var(--color-sidebar-bg, #1f3a38);
+  color: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  box-shadow: 4px 0 15px rgba(15, 23, 42, 0.35);
+  transition: width 0.3s ease-in-out;
+  position: relative;
+}
+
+.sidebar.collapsed {
+  width: 96px;
+  z-index: 999;
+}
+
+/* HEADER / LOGO */
+.sidebar-header {
+  margin-bottom: 24px;
+  transition: all 0.3s ease;
+}
+
+/* --- Logo centrado correctamente --- */
+.sidebar-logo-row {
+  display: flex;
+  align-items: center;    /* centra verticalmente dentro del header */
+  justify-content: center; /* centra horizontalmente */
+  height: 90px;            /* altura fija visible */
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.sidebar-logo-full-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.sidebar-logo-full {
+  height: 60px;  /* ajustá entre 55–65 según el tamaño de tu imagen */
+  width: auto;
+  display: block;
+}
+
+.sidebar-logo-iso {
+  width: 80px;
+  height: 75px;
+  display: block;
+  margin: 0 auto;
+}
+
+/* ocultar textos del logo cuando esté colapsado (por si quedan restos) */
+.sidebar.collapsed .sidebar-logo-text {
+  display: none;
+}
+
+
+/* BOTÓN HAMBURGUESA */
+.sidebar-toggle {
+  margin-top: 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  color: #cbd5e1;
+  transition: color 0.2s ease, transform 0.15s ease;
+  outline: none;
+  box-shadow: none;
+}
+
+.sidebar-toggle:focus,
+.sidebar-toggle:focus-visible,
+.sidebar-toggle:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.sidebar-toggle:hover {
+  color: #ffffff;
+  transform: scale(1.08);
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+}
+
+.sidebar-toggle svg {
+  width: 26px;
+  height: 26px;
+}
+
+/* MENÚ */
+.sidebar-menu {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease-in-out;
+}
+
+/* 🔹 Quitamos contornos raros en foco/click del menú */
+.sidebar-item:focus,
+.sidebar-item:focus-visible,
+.sidebar-item:active {
+  outline: none;
+  box-shadow: none;
+  border: none;
+}
+
+.sidebar-item:hover {
+  background-color: rgba(148, 163, 184, 0.22);
+}
+
+.sidebar-item-label {
+  white-space: nowrap;
+}
+
+/* Estado ACTIVO del ítem de menú */
+.sidebar-item.is-active {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(116, 212, 204, 0.4);
+}
+
+/* FOOTER / LOGOUT */
+.sidebar-footer {
+  margin-top: 16px;
+}
+
+.sidebar-logout {
+  background-color: transparent;
+  color: #fecaca;
+}
+
+.sidebar-logout:hover {
+  background-color: rgba(239, 68, 68, 0.2);
+}
+
+/* COLAPSADO + EFECTO PEEK DEL LABEL */
+.sidebar.collapsed .sidebar-item-label {
+  position: absolute;
+  left: 72px;
+  top: 50%;
+  transform: translateY(-50%) translateX(-8px);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background-color: #0459a1;
+  color: #f9fafb;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+}
+
+.sidebar.collapsed .sidebar-item:hover .sidebar-item-label {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+.sidebar.collapsed .sidebar-item {
+  justify-content: center;
+  background-color: transparent;
+}

@@ -1,0 +1,58 @@
+/* integrad-dashboard/src/components/StatusChip.css */
+/* Chips de estado IntegraD */
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px; /* menos redondo, más “chip” */
+  color: #ffffff;
+  text-align: center;
+  min-width: 110px;
+  gap: 6px;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+/* Iconito interno circular */
+.status-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 11px;
+}
+
+/* texto */
+.status-chip-label {
+  white-space: nowrap;
+}
+
+/* Colores por tipo (usan las mismas variables del dashboard con fallback) */
+.status-chip.success {
+  background-color: var(--color-success, #22c55e); /* verde */
+}
+
+.status-chip.warning {
+  background-color: var(--color-warning, #facc15); /* amarillo */
+  color: #111827;
+}
+
+.status-chip.error {
+  background-color: var(--color-error, #ef4444); /* rojo */
+}
+
+.status-chip.neutral {
+  background-color: #9ca3af; /* gris */
+}
+
+/* Efecto hover suave */
+.status-chip:hover {
+  opacity: 0.9;
+  transform: scale(1.03);
+}
