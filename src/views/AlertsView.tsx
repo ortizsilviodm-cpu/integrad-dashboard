@@ -2,20 +2,69 @@
 
 import { useEffect, useState } from "react";
 import StatusChip from "../components/StatusChip";
-
-/**
- * Por ahora repetimos la URL base.
- * Más adelante se puede centralizar en un config común con App.tsx.
- */
 import { API_URL } from "../config/api";
+import { safeFetch } from "../api/safeFetch";
 
 type AlertRow = {
   id: string;
+  patientName: string;
   typeLabel: string;
   valueLabel: string;
   createdAtLabel: string;
   statusLabel: string;
 };
+
+interface AlertsApiRow {
+  id: string;
+  patientId: string;
+  patientName?: string;
+  kind: string;
+  value: number | null;
+  detectedAt: string;
+  resolvedAt: string | null;
+  status: string;
+}
+
+interface AlertsApiResponse {
+  data?: AlertsApiRow[];
+}
+
+/**
+ * Mapea el tipo crudo de alerta a una etiqueta amigable.
+ */
+function mapAlertType(rawType: string | null | undefined): string {
+  if (!rawType) return "—";
+
+  const t = rawType.toLowerCase();
+
+  if (t === "hipo" || t === "hipoglucemia") return "Hipo";
+  if (t === "hiper" || t === "hiperglucemia") return "Hiper";
+  if (t === "riesgo_ia" || t === "ia_risk") return "Riesgo IA";
+
+  // fallback: capitalizar lo que venga
+  return rawType.charAt(0).toUpperCase() + rawType.slice(1);
+}
+
+/**
+ * Formatea el valor de la alerta según el tipo.
+ * - Para hipo/hiper → mg/dL.
+ * - Para riesgo IA → "score / 100".
+ */
+function formatAlertValue(
+  rawType: string | null | undefined,
+  valueRaw: number | null,
+  unit: string
+): string {
+  if (valueRaw == null) return "—";
+
+  const t = rawType?.toLowerCase();
+
+  if (t === "riesgo_ia" || t === "ia_risk") {
+    return `${valueRaw} / 100`;
+  }
+
+  return `${valueRaw} ${unit}`;
+}
 
 export default function AlertsView() {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
@@ -25,34 +74,50 @@ export default function AlertsView() {
   // Cargar alertas abiertas desde el backend
   useEffect(() => {
     const fetchAlerts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+      setLoading(true);
+      setError(null);
 
-        // Leemos solo alertas abiertas (status=open)
-        const res = await fetch(`${API_URL}/readings/alerts?status=open`);
-        if (!res.ok) {
-          throw new Error("Error obteniendo alertas");
+      try {
+        const result = await safeFetch<AlertsApiResponse>(
+          `${API_URL}/readings/alerts?status=open`
+        );
+
+        if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
+          setAlerts([]);
+          setError(
+            result.error ?? "No se pudieron cargar las alertas."
+          );
+          return;
         }
 
-        const json = await res.json();
-        const apiAlerts: any[] = json.data || [];
+        const apiAlerts = result.data.data;
 
-        // Mapeo flexible de campos según lo que devuelva el backend
         const mapped: AlertRow[] = apiAlerts.map((a) => {
-          const typeLabel = a.type ?? a.alertType ?? a.kind ?? "—";
+          const rawType = a.kind ?? null;
+          const typeLabel = mapAlertType(rawType);
 
-          const valueRaw =
-            a.value ?? a.readingValue ?? a.reading?.value ?? null;
+          // Nombre del paciente
+          const rawPatientName = a.patientName ?? "";
+          const normalizedName = rawPatientName
+            .trim()
+            .replace(/\s+/g, " ");
+          const patientName = normalizedName || "—";
+
+          const valueRaw = a.value;
+
           const valueUnit =
-            a.unit ??
-            a.readingUnit ??
-            a.reading?.unit ??
-            (valueRaw != null ? "mg/dL" : "");
-          const valueLabel =
-            valueRaw != null ? `${valueRaw} ${valueUnit}` : "—";
+            valueRaw != null ? "mg/dL" : "";
 
-          const created = a.createdAt ?? a.timestamp ?? a.reading?.createdAt;
+          const numericValue =
+            typeof valueRaw === "number" ? valueRaw : Number(valueRaw);
+
+          const valueLabel = formatAlertValue(
+            rawType,
+            isNaN(numericValue) ? null : numericValue,
+            valueUnit
+          );
+
+          const created = a.detectedAt;
           let createdAtLabel = "—";
           if (created) {
             const d = new Date(created);
@@ -64,12 +129,11 @@ export default function AlertsView() {
             }
           }
 
-          const statusLabel = a.status
-            ? String(a.status)
-            : "En alerta";
+          const statusLabel = a.status ? String(a.status) : "En alerta";
 
           return {
-            id: String(a.id ?? `${typeLabel}-${created ?? Math.random()}`),
+            id: String(a.id),
+            patientName,
             typeLabel,
             valueLabel,
             createdAtLabel,
@@ -79,7 +143,7 @@ export default function AlertsView() {
 
         setAlerts(mapped);
       } catch (err) {
-        console.error("Error cargando alertas:", err);
+        console.error("Error inesperado cargando alertas:", err);
         setAlerts([]);
         setError("No se pudieron cargar las alertas.");
       } finally {
@@ -94,7 +158,7 @@ export default function AlertsView() {
     <section className="app-table">
       <h2>Alertas</h2>
       <p className="chart-subtitle">
-        Monitoreo de episodios de hipo e hiper y su resolución.
+        Supervisión de episodios hipo/hiper y alertas de riesgo IA.
       </p>
 
       {loading && (
@@ -115,6 +179,7 @@ export default function AlertsView() {
         <table>
           <thead>
             <tr>
+              <th>Paciente</th>
               <th>Tipo</th>
               <th>Valor</th>
               <th>Fecha y hora</th>
@@ -124,6 +189,7 @@ export default function AlertsView() {
           <tbody>
             {alerts.map((a) => (
               <tr key={a.id}>
+                <td>{a.patientName}</td>
                 <td>{a.typeLabel}</td>
                 <td>{a.valueLabel}</td>
                 <td>{a.createdAtLabel}</td>

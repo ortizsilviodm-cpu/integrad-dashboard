@@ -10,6 +10,10 @@ import AlertsView from "./views/AlertsView";
 import DispensesView from "./views/DispensesView";
 import AuditView from "./views/AuditView";
 import SettingsView from "./views/SettingsView";
+import IAPredictivaView from "./views/IAPredictivaView";
+
+import { API_URL } from "./config/api";
+import { safeFetch } from "./api/safeFetch";
 
 type PatientRow = {
   id: number | string;
@@ -39,9 +43,11 @@ const MOCK_PATIENTS: PatientRow[] = [
   },
 ];
 
-import { API_URL } from "./config/api";
 const DASHBOARD_PATIENT_ID = "cmhifdhly0000te0gwqwbp6e9"; // paciente demo
 const ADHERENCE_WINDOW_DAYS = 90;
+
+// 🔹 rol actual (por ahora fijo; más adelante vendrá del sistema de auth)
+const CURRENT_USER_ROLE = "admin" as const;
 
 // Secciones del menú
 export type SectionKey =
@@ -50,7 +56,8 @@ export type SectionKey =
   | "alerts"
   | "dispenses"
   | "audit"
-  | "settings";
+  | "settings"
+  | "iaPredictiva";
 
 const SECTION_META: Record<
   SectionKey,
@@ -61,15 +68,18 @@ const SECTION_META: Record<
 > = {
   dashboard: {
     title: "Dashboard Clínico IntegraD",
-    subtitle: "Resumen de pacientes, adherencia y alertas críticas.",
+    subtitle:
+      "Resumen general de pacientes, adherencia y alertas críticas en seguimiento.",
   },
   patients: {
     title: "Pacientes",
-    subtitle: "Gestión de pacientes en seguimiento.",
+    subtitle:
+      "Registro general de pacientes activos y su información básica de seguimiento.",
   },
   alerts: {
     title: "Alertas",
-    subtitle: "Monitoreo de alertas hipo/hiper y seguimiento clínico.",
+    subtitle:
+      "Supervisión de episodios críticos y alertas predictivas generadas por IA.",
   },
   dispenses: {
     title: "Dispensas",
@@ -81,9 +91,56 @@ const SECTION_META: Record<
   },
   settings: {
     title: "Configuración",
-    subtitle: "Preferencias del panel profesional IntegraD.",
+    subtitle:
+      "Preferencias del panel profesional y ajustes del entorno IntegraD.",
+  },
+  iaPredictiva: {
+    title: "IA Predictiva — Riesgo y adherencia",
+    subtitle:
+      "Visualización interna del riesgo estimado y adherencia de pacientes. Muestra pacientes ordenados por riesgo estimado, a partir de datos clínicos y de adherencia, sin emitir diagnóstico automático.",
   },
 };
+
+// ============================
+// Tipos de respuestas de API
+// ============================
+
+interface ApiPatient {
+  id?: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  document?: string;
+  documentNumber?: string;
+  documentId?: string;
+}
+
+interface PatientsApiResponse {
+  data?: ApiPatient[];
+}
+
+interface FollowupApiRow {
+  patientId?: string;
+  fullName?: string;
+  documentNumber?: string;
+  lastGlucoseValue?: number | null;
+  lastGlucoseUnit?: string | null;
+  lastGlucoseAt?: string | null;
+  adherencePercent?: number;
+  statusLabel?: string;
+}
+
+interface FollowupApiResponse {
+  data?: FollowupApiRow[];
+}
+
+interface AdherenceApiResponse {
+  adherencePercent?: number;
+}
+
+interface AlertsKpiApiResponse {
+  data?: unknown[];
+}
 
 function App() {
   // 🔹 Sección activa del menú
@@ -111,14 +168,23 @@ function App() {
   // ============================
   useEffect(() => {
     const fetchAlerts = async () => {
+      setLoadingAlerts(true);
       try {
-        setLoadingAlerts(true);
-        const res = await fetch(`${API_URL}/readings/alerts?status=open`);
-        if (!res.ok) throw new Error("Error obteniendo alertas abiertas");
-        const json = await res.json();
-        setAlertCount(json.data?.length || 0);
+        const result = await safeFetch<AlertsKpiApiResponse>(
+          `${API_URL}/readings/alerts?status=open`
+        );
+
+        if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
+          setAlertCount(0);
+          if (result.error) {
+            console.error("Error cargando alertas (KPI):", result.error);
+          }
+          return;
+        }
+
+        setAlertCount(result.data.data.length);
       } catch (error) {
-        console.error("Error cargando alertas:", error);
+        console.error("Error inesperado cargando alertas (KPI):", error);
         setAlertCount(0);
       } finally {
         setLoadingAlerts(false);
@@ -128,7 +194,7 @@ function App() {
     fetchAlerts();
   }, []);
 
-  // ============================
+    // ============================
   // Pacientes (KPI + listado)
   // ============================
   useEffect(() => {
@@ -137,30 +203,48 @@ function App() {
         setLoadingPatients(true);
         setPatientsError(null);
 
-        const res = await fetch(`${API_URL}/patients`);
-        if (!res.ok) throw new Error("Error obteniendo pacientes");
-        const json = await res.json();
+        const result = await safeFetch<PatientsApiResponse>(
+          `${API_URL}/patients`
+        );
 
-        const apiPatients: any[] = json.data || [];
+        if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
+          setPatients([]);
+          setPatientCount(0);
+          setPatientsError(
+            result.error ?? "No se pudieron cargar los pacientes."
+          );
+          return;
+        }
 
-        // Mapeo flexible por si el backend usa otros nombres de campos
-        const mapped: PatientRow[] = apiPatients.map((p, index) => ({
-          id: p.id ?? index,
-          // 👇 corregido: solo usamos ||
-          name:
-            p.fullName ||
-            `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim() ||
-            "Sin nombre",
-          document: p.document ?? p.documentNumber ?? p.documentId ?? "—",
-          lastGlucose: "—", // detalle se verá en otros módulos
-          adherence: "—",
-          status: "Sin estado",
-        }));
+        const apiPatients = result.data.data;
+
+        const mapped: PatientRow[] = apiPatients.map((p, index) => {
+          // nombre
+          const rawNameFromFull = p.fullName ?? "";
+          const rawNameFromParts =
+            `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim();
+          const name =
+            (rawNameFromFull || rawNameFromParts).trim() || "Sin nombre";
+
+          // documento
+          const document =
+            p.document ?? p.documentNumber ?? p.documentId ?? "—";
+
+          return {
+            id: p.id ?? index,
+            name,
+            document,
+            // estos campos no vienen de /patients, los dejamos neutros
+            lastGlucose: "—",
+            adherence: "—",
+            status: "Sin estado",
+          };
+        });
 
         setPatients(mapped);
         setPatientCount(mapped.length);
       } catch (error) {
-        console.error("Error cargando pacientes:", error);
+        console.error("Error inesperado cargando pacientes:", error);
         setPatients([]);
         setPatientCount(0);
         setPatientsError("No se pudieron cargar los pacientes.");
@@ -181,18 +265,24 @@ function App() {
         setLoadingAdherence(true);
 
         const url = `${API_URL}/dispenses/adherence?patientId=${DASHBOARD_PATIENT_ID}&days=${ADHERENCE_WINDOW_DAYS}`;
-        const res = await fetch(url);
-        if (!res.ok)
-          throw new Error("Error obteniendo adherencia de medicación");
+        const result = await safeFetch<AdherenceApiResponse>(url);
 
-        const json = await res.json();
+        if (!result.ok || !result.data) {
+          if (result.error) {
+            console.error("Error cargando adherencia:", result.error);
+          }
+          setAdherencePercent(0);
+          return;
+        }
 
         const value =
-          typeof json.adherencePercent === "number" ? json.adherencePercent : 0;
+          typeof result.data.adherencePercent === "number"
+            ? result.data.adherencePercent
+            : 0;
 
         setAdherencePercent(value);
       } catch (error) {
-        console.error("Error cargando adherencia:", error);
+        console.error("Error inesperado cargando adherencia:", error);
         setAdherencePercent(0);
       } finally {
         setLoadingAdherence(false);
@@ -209,34 +299,53 @@ function App() {
     const fetchFollowupPatients = async () => {
       try {
         const url = `${API_URL}/dashboard/followup-patients?limit=5&days=${ADHERENCE_WINDOW_DAYS}`;
-        const res = await fetch(url);
-        if (!res.ok) {
-          throw new Error("Error obteniendo pacientes en seguimiento");
+        const result = await safeFetch<FollowupApiResponse>(url);
+
+        if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
+          if (result.error) {
+            console.error(
+              "Error cargando pacientes en seguimiento:",
+              result.error
+            );
+          }
+          return;
         }
 
-        const json = await res.json();
-        const apiRows: any[] = json.data || [];
+        const apiRows = result.data.data;
 
-        const mapped: PatientRow[] = apiRows.map((row, index) => ({
-          id: row.patientId ?? index,
-          name: row.fullName ?? "Sin nombre",
-          document: row.documentNumber ?? "—",
-          lastGlucose:
+        const mapped: PatientRow[] = apiRows.map((row, index) => {
+          const fullName = row.fullName ?? ("" || "Sin nombre");
+
+          const documentNumber = row.documentNumber ?? "—";
+
+          const lastGlucose =
             typeof row.lastGlucoseValue === "number"
               ? `${row.lastGlucoseValue} ${row.lastGlucoseUnit ?? "mg/dL"}`
-              : "—",
-          adherence:
+              : "—";
+
+          const adherence =
             typeof row.adherencePercent === "number"
               ? `${row.adherencePercent} %`
-              : "—",
-          status: row.statusLabel ?? "En revisión",
-        }));
+              : "—";
+
+          return {
+            id: row.patientId ?? index,
+            name: fullName,
+            document: documentNumber,
+            lastGlucose,
+            adherence,
+            status: row.statusLabel ?? "En revisión",
+          };
+        });
 
         if (mapped.length > 0) {
           setDashboardPatients(mapped);
         }
       } catch (error) {
-        console.error("Error cargando pacientes en seguimiento:", error);
+        console.error(
+          "Error inesperado cargando pacientes en seguimiento:",
+          error
+        );
         // Si falla, simplemente nos quedamos con MOCK_PATIENTS
       }
     };
@@ -310,6 +419,13 @@ function App() {
             SECCIÓN: CONFIGURACIÓN
         ========================== */}
         {activeSection === "settings" && <SettingsView />}
+
+        {/* =========================
+            SECCIÓN: IA PREDICTIVA
+        ========================== */}
+        {activeSection === "iaPredictiva" && (
+          <IAPredictivaView currentUserRole={CURRENT_USER_ROLE} />
+        )}
       </main>
     </div>
   );

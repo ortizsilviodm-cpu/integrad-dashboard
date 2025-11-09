@@ -55,11 +55,7 @@ export default function PatientsView({
 
   return (
     <section className="app-table">
-      <h2>Pacientes</h2>
-      <p className="chart-subtitle">
-        Listado y búsqueda de pacientes en seguimiento.
-      </p>
-
+      
       {/* Toolbar: búsqueda + contador */}
       <div className="patients-toolbar">
         <input

@@ -84,7 +84,7 @@ export default function DashboardView({
       <section className="app-table">
         <h2>Pacientes en Seguimiento</h2>
         <p className="chart-subtitle">
-          Última glucemia y estado de control para algunos pacientes.
+           Últimas mediciones de glucemia, adherencia y estado de control.
         </p>
 
         <table>

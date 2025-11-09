@@ -1,4 +1,4 @@
-/* integrad-dashboard\src\components\Sidebar.tsx */
+/* integrad-dashboard/src/components/Sidebar.tsx */
 
 import React, { useState } from "react";
 import {
@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   ChevronsRight,
+  Brain, // 👈 icono para IA Predictiva
 } from "lucide-react";
 
 import "./Sidebar.css";
@@ -23,7 +24,15 @@ import "./Sidebar.css";
 import logoFull from "../assets/logo-integrad-full.png";
 import logoIso from "../assets/logo-integrad-iso.png";
 
-type MenuKey = "dashboard" | "patients" | "alerts" | "dispenses" | "audit" | "settings";
+// 🔹 Agregamos "iaPredictiva" al tipo de menú
+type MenuKey =
+  | "dashboard"
+  | "patients"
+  | "alerts"
+  | "dispenses"
+  | "audit"
+  | "settings"
+  | "iaPredictiva";
 
 type MenuItem = {
   icon: React.ComponentType<{ size?: number }>;
@@ -31,6 +40,7 @@ type MenuItem = {
   key: MenuKey;
 };
 
+// 🔹 Agregamos la opción "IA Predictiva" al menú
 const menuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", key: "dashboard" },
   { icon: Users, label: "Pacientes", key: "patients" },
@@ -38,6 +48,7 @@ const menuItems: MenuItem[] = [
   { icon: Package, label: "Dispensas", key: "dispenses" },
   { icon: FileText, label: "Auditoría", key: "audit" },
   { icon: Settings, label: "Configuración", key: "settings" },
+  { icon: Brain, label: "IA Predictiva", key: "iaPredictiva" }, // 👈 nueva sección
 ];
 
 interface SidebarProps {
