@@ -1,433 +1,303 @@
 /* integrad-dashboard/src/App.tsx */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, createContext, useContext } from "react";
 import "./App.css";
 
-import Sidebar from "./components/Sidebar";
-import DashboardView from "./views/DashboardView";
-import PatientsView from "./views/PatientsView";
-import AlertsView from "./views/AlertsView";
-import DispensesView from "./views/DispensesView";
-import AuditView from "./views/AuditView";
+// 🌐 Global
+import { getAuthToken, isAuthenticated } from "./store/authStore";
+import { logout } from "./api/auth";
+
+// 🏛️ Componentes
+import Sidebar, { type SectionKey } from "./components/Sidebar";
+import LoginPage from "./pages/LoginPage";
+
+// Pages
+import DashboardPage from "./pages/DashboardPage";
+import AlertsPage from "./pages/AlertsPage";
+import DispensesPage from "./pages/DispensesPage";
+import AuditPage from "./pages/AuditPage";
+import IAPredictivaPage from "./pages/IAPredictivaPage";
+import PatientsPage from "./pages/PatientsPage";
+import MedicationsPage from "./pages/MedicationsPage";
+import AmbulatoryPage from "./pages/AmbulatoryPage";
+import PatientEnrollmentPage from "./pages/PatientEnrollmentPage";
+import EnrollmentsPage from "./pages/EnrollmentsPage";
+
+// Views
 import SettingsView from "./views/SettingsView";
-import IAPredictivaView from "./views/IAPredictivaView";
+import EconomicsDemoView from "./views/EconomicsDemoView";
 
-import { API_URL } from "./config/api";
-import { safeFetch } from "./api/safeFetch";
+const DEMO_MODE =
+  (import.meta.env.VITE_DEMO_MODE || "false").toLowerCase() === "true";
 
-type PatientRow = {
-  id: number | string;
-  name: string;
-  document: string;
-  lastGlucose: string;
-  adherence: string;
-  status: string;
-};
+export type { SectionKey } from "./components/Sidebar";
 
-const MOCK_PATIENTS: PatientRow[] = [
-  {
-    id: 1,
-    name: "Juan Pérez",
-    document: "xx.xxx.xxx",
-    lastGlucose: "182 mg/dL",
-    adherence: "78 %",
-    status: "No controlado",
-  },
-  {
-    id: 2,
-    name: "María Gómez",
-    document: "xx.xxx.xxx",
-    lastGlucose: "210 mg/dL",
-    adherence: "62 %",
-    status: "En alerta",
-  },
-];
+export interface User {
+  id: string;
+  fullName: string;
+  role: "admin" | "professional";
+  specialty: string;
+}
 
-const DASHBOARD_PATIENT_ID = "cmhifdhly0000te0gwqwbp6e9"; // paciente demo
-const ADHERENCE_WINDOW_DAYS = 90;
+// ============================
+// 🔐 Auth Context
+// ============================
 
-// 🔹 rol actual (por ahora fijo; más adelante vendrá del sistema de auth)
-const CURRENT_USER_ROLE = "admin" as const;
+interface AuthContextType {
+  user: User | null;
+  isAuthenticated: boolean;
+  isReady: boolean;
+  login: (token: string) => void;
+  logout: () => void;
+}
 
-// Secciones del menú
-export type SectionKey =
-  | "dashboard"
-  | "patients"
-  | "alerts"
-  | "dispenses"
-  | "audit"
-  | "settings"
-  | "iaPredictiva";
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  isAuthenticated: false,
+  isReady: false,
+  login: () => {},
+  logout: () => {},
+});
 
-const SECTION_META: Record<
-  SectionKey,
-  {
-    title: string;
-    subtitle: string;
+export const useAuth = () => useContext(AuthContext);
+
+// ============================
+// 🏛️ APP Principal
+// ============================
+
+const getInitialAuth = (): { user: User | null; token: string | null } => {
+  const token = getAuthToken();
+  if (token) {
+    return {
+      token,
+      user: {
+        id: "demo-user-123",
+        fullName: "Dr. Juan Pérez",
+        role: "professional",
+        specialty: "Endocrinología",
+      },
+    };
   }
-> = {
-  dashboard: {
-    title: "Dashboard Clínico IntegraD",
-    subtitle:
-      "Resumen general de pacientes, adherencia y alertas críticas en seguimiento.",
-  },
-  patients: {
-    title: "Pacientes",
-    subtitle:
-      "Registro general de pacientes activos y su información básica de seguimiento.",
-  },
-  alerts: {
-    title: "Alertas",
-    subtitle:
-      "Supervisión de episodios críticos y alertas predictivas generadas por IA.",
-  },
-  dispenses: {
-    title: "Dispensas",
-    subtitle: "Dispensas de medicación y adherencia al tratamiento.",
-  },
-  audit: {
-    title: "Auditoría",
-    subtitle: "Trazabilidad y registro de eventos clínicos.",
-  },
-  settings: {
-    title: "Configuración",
-    subtitle:
-      "Preferencias del panel profesional y ajustes del entorno IntegraD.",
-  },
-  iaPredictiva: {
-    title: "IA Predictiva — Riesgo y adherencia",
-    subtitle:
-      "Visualización interna del riesgo estimado y adherencia de pacientes. Muestra pacientes ordenados por riesgo estimado, a partir de datos clínicos y de adherencia, sin emitir diagnóstico automático.",
-  },
+  return { user: null, token: null };
 };
-
-// ============================
-// Tipos de respuestas de API
-// ============================
-
-interface ApiPatient {
-  id?: string;
-  firstName?: string;
-  lastName?: string;
-  fullName?: string;
-  document?: string;
-  documentNumber?: string;
-  documentId?: string;
-}
-
-interface PatientsApiResponse {
-  data?: ApiPatient[];
-}
-
-interface FollowupApiRow {
-  patientId?: string;
-  fullName?: string;
-  documentNumber?: string;
-  lastGlucoseValue?: number | null;
-  lastGlucoseUnit?: string | null;
-  lastGlucoseAt?: string | null;
-  adherencePercent?: number;
-  statusLabel?: string;
-}
-
-interface FollowupApiResponse {
-  data?: FollowupApiRow[];
-}
-
-interface AdherenceApiResponse {
-  adherencePercent?: number;
-}
-
-interface AlertsKpiApiResponse {
-  data?: unknown[];
-}
 
 function App() {
-  // 🔹 Sección activa del menú
-  const [activeSection, setActiveSection] = useState<SectionKey>("dashboard");
+  const [authData, setAuthData] = useState(() => getInitialAuth());
+  const [isReady, setIsReady] = useState(false);
+  const [activeSection, setActiveSection] =
+    useState<SectionKey>("dashboard");
 
-  // 🔹 Estados KPI
-  const [alertCount, setAlertCount] = useState<number>(0);
-  const [patientCount, setPatientCount] = useState<number>(0);
-  const [adherencePercent, setAdherencePercent] = useState<number | null>(null);
+  // 🔎 Accesibilidad: escala global de fuente (1 = 100%)
+  const [fontScale, setFontScale] = useState<number>(1);
 
-  const [loadingAlerts, setLoadingAlerts] = useState<boolean>(false);
-  const [loadingPatients, setLoadingPatients] = useState<boolean>(false);
-  const [loadingAdherence, setLoadingAdherence] = useState<boolean>(false);
-
-  // 🔹 Estado para vista de Pacientes (listado completo)
-  const [patients, setPatients] = useState<PatientRow[]>([]);
-  const [patientsError, setPatientsError] = useState<string | null>(null);
-
-  // 🔹 Estado para “Pacientes en Seguimiento” del DASHBOARD
-  const [dashboardPatients, setDashboardPatients] =
-    useState<PatientRow[]>(MOCK_PATIENTS);
-
-  // ============================
-  // Alertas abiertas (KPI)
-  // ============================
   useEffect(() => {
-    const fetchAlerts = async () => {
-      setLoadingAlerts(true);
-      try {
-        const result = await safeFetch<AlertsKpiApiResponse>(
-          `${API_URL}/readings/alerts?status=open`
-        );
-
-        if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
-          setAlertCount(0);
-          if (result.error) {
-            console.error("Error cargando alertas (KPI):", result.error);
-          }
-          return;
-        }
-
-        setAlertCount(result.data.data.length);
-      } catch (error) {
-        console.error("Error inesperado cargando alertas (KPI):", error);
-        setAlertCount(0);
-      } finally {
-        setLoadingAlerts(false);
-      }
-    };
-
-    fetchAlerts();
+    const tokenExists = isAuthenticated();
+    if (tokenExists) {
+      // En una app real: fetchUserData(token)
+    }
+    setIsReady(true);
   }, []);
 
-    // ============================
-  // Pacientes (KPI + listado)
-  // ============================
   useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        setLoadingPatients(true);
-        setPatientsError(null);
+    document.documentElement.style.setProperty(
+      "--font-scale",
+      String(fontScale)
+    );
+  }, [fontScale]);
 
-        const result = await safeFetch<PatientsApiResponse>(
-          `${API_URL}/patients`
-        );
+  const handleLogin = (token: string) => {
+    setAuthData({
+      token,
+      user: {
+        id: "demo-user-123",
+        fullName: "Dr. Juan Pérez",
+        role: "professional",
+        specialty: "Endocrinología",
+      },
+    });
+  };
 
-        if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
-          setPatients([]);
-          setPatientCount(0);
-          setPatientsError(
-            result.error ?? "No se pudieron cargar los pacientes."
-          );
-          return;
-        }
+  const handleLogout = () => {
+    logout();
+    setAuthData({ user: null, token: null });
+    setActiveSection("dashboard");
+  };
 
-        const apiPatients = result.data.data;
+  const authContextValue: AuthContextType = {
+    user: authData.user,
+    isAuthenticated: !!authData.user,
+    isReady,
+    login: handleLogin,
+    logout: handleLogout,
+  };
 
-        const mapped: PatientRow[] = apiPatients.map((p, index) => {
-          // nombre
-          const rawNameFromFull = p.fullName ?? "";
-          const rawNameFromParts =
-            `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim();
-          const name =
-            (rawNameFromFull || rawNameFromParts).trim() || "Sin nombre";
+  const handleFontIncrease = () =>
+    setFontScale((prev) => Math.min(prev + 0.1, 1.5));
 
-          // documento
-          const document =
-            p.document ?? p.documentNumber ?? p.documentId ?? "—";
+  const handleFontDecrease = () =>
+    setFontScale((prev) => Math.max(prev - 0.1, 0.9));
 
-          return {
-            id: p.id ?? index,
-            name,
-            document,
-            // estos campos no vienen de /patients, los dejamos neutros
-            lastGlucose: "—",
-            adherence: "—",
-            status: "Sin estado",
-          };
-        });
+  const handleFontReset = () => setFontScale(1);
 
-        setPatients(mapped);
-        setPatientCount(mapped.length);
-      } catch (error) {
-        console.error("Error inesperado cargando pacientes:", error);
-        setPatients([]);
-        setPatientCount(0);
-        setPatientsError("No se pudieron cargar los pacientes.");
-      } finally {
-        setLoadingPatients(false);
-      }
-    };
+  const fontScalePercentage = Math.round(fontScale * 100);
 
-    fetchPatients();
-  }, []);
+  if (!isReady) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center" }}>
+        Cargando configuración de la aplicación...
+      </div>
+    );
+  }
 
-  // ============================
-  // Adherencia de medicación (KPI)
-  // ============================
-  useEffect(() => {
-    const fetchAdherence = async () => {
-      try {
-        setLoadingAdherence(true);
+  if (!authContextValue.isAuthenticated) {
+    return <LoginPage onSuccessfulLogin={handleLogin} />;
+  }
 
-        const url = `${API_URL}/dispenses/adherence?patientId=${DASHBOARD_PATIENT_ID}&days=${ADHERENCE_WINDOW_DAYS}`;
-        const result = await safeFetch<AdherenceApiResponse>(url);
-
-        if (!result.ok || !result.data) {
-          if (result.error) {
-            console.error("Error cargando adherencia:", result.error);
-          }
-          setAdherencePercent(0);
-          return;
-        }
-
-        const value =
-          typeof result.data.adherencePercent === "number"
-            ? result.data.adherencePercent
-            : 0;
-
-        setAdherencePercent(value);
-      } catch (error) {
-        console.error("Error inesperado cargando adherencia:", error);
-        setAdherencePercent(0);
-      } finally {
-        setLoadingAdherence(false);
-      }
-    };
-
-    fetchAdherence();
-  }, []);
-
-  // ============================
-  // Pacientes en Seguimiento (Dashboard)
-  // ============================
-  useEffect(() => {
-    const fetchFollowupPatients = async () => {
-      try {
-        const url = `${API_URL}/dashboard/followup-patients?limit=5&days=${ADHERENCE_WINDOW_DAYS}`;
-        const result = await safeFetch<FollowupApiResponse>(url);
-
-        if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
-          if (result.error) {
-            console.error(
-              "Error cargando pacientes en seguimiento:",
-              result.error
-            );
-          }
-          return;
-        }
-
-        const apiRows = result.data.data;
-
-        const mapped: PatientRow[] = apiRows.map((row, index) => {
-          const fullName = row.fullName ?? ("" || "Sin nombre");
-
-          const documentNumber = row.documentNumber ?? "—";
-
-          const lastGlucose =
-            typeof row.lastGlucoseValue === "number"
-              ? `${row.lastGlucoseValue} ${row.lastGlucoseUnit ?? "mg/dL"}`
-              : "—";
-
-          const adherence =
-            typeof row.adherencePercent === "number"
-              ? `${row.adherencePercent} %`
-              : "—";
-
-          return {
-            id: row.patientId ?? index,
-            name: fullName,
-            document: documentNumber,
-            lastGlucose,
-            adherence,
-            status: row.statusLabel ?? "En revisión",
-          };
-        });
-
-        if (mapped.length > 0) {
-          setDashboardPatients(mapped);
-        }
-      } catch (error) {
-        console.error(
-          "Error inesperado cargando pacientes en seguimiento:",
-          error
-        );
-        // Si falla, simplemente nos quedamos con MOCK_PATIENTS
-      }
-    };
-
-    fetchFollowupPatients();
-  }, []);
-
-  const { title, subtitle } = SECTION_META[activeSection];
+  const userInitials =
+    authData.user?.fullName
+      .split(" ")
+      .filter(Boolean)
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join("") ?? "";
 
   return (
-    <div className="app-root">
-      <Sidebar activeSection={activeSection} onSelect={setActiveSection} />
+    <AuthContext.Provider value={authContextValue}>
+      <div className="app-root">
+        <Sidebar activeSection={activeSection} onSelect={setActiveSection} />
 
-      <main className="app-main">
-        {/* Header dinámico según sección */}
-        <header className="app-header">
-          <div>
-            <h1>{title}</h1>
-            <p>{subtitle}</p>
+        <main className="app-main">
+          {/* TOPBAR */}
+          <header
+            className="app-topbar-minimal"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0.4rem 1.5rem",
+              height: 50,
+              backgroundColor: "#FFFFFF",
+              borderBottom: "1px solid #e5e7eb",
+            }}
+          >
+            <div className="app-topbar-left" style={{ fontSize: 12, color: "#9ca3af" }} />
+
+            <div
+              className="app-topbar-right"
+              style={{ display: "flex", alignItems: "center", gap: 12 }}
+            >
+              {/* Controles de accesibilidad */}
+              <div
+                className="font-size-controls"
+                aria-label="Ajustar tamaño de texto"
+                style={{ display: "flex", alignItems: "center", gap: 4 }}
+              >
+                <button type="button" onClick={handleFontDecrease}>A-</button>
+                <button type="button" onClick={handleFontReset}>A</button>
+                <button type="button" onClick={handleFontIncrease}>A+</button>
+                <span
+                  style={{
+                    marginLeft: 6,
+                    fontSize: 11,
+                    color: "#6b7280",
+                    minWidth: 52,
+                    textAlign: "right",
+                  }}
+                >
+                  {fontScalePercentage}%
+                </span>
+              </div>
+
+              {DEMO_MODE && (
+                <button
+                  onClick={() => setActiveSection("economicsDemo")}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: "1px solid #e5e7eb",
+                    background: "#ffffff",
+                    color: "#2563eb",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: 12,
+                  }}
+                >
+                  Impacto Económico
+                </button>
+              )}
+
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "999px",
+                  background:
+                    "linear-gradient(135deg, #f97316 0%, #ec4899 100%)",
+                  color: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {userInitials}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  lineHeight: 1.1,
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>
+                  {authData.user?.fullName}
+                </strong>
+                <span
+                  className="app-header-role"
+                  style={{ fontSize: 11, color: "#6b7280" }}
+                >
+                  {authData.user?.specialty}
+                </span>
+              </div>
+
+              <button
+                onClick={handleLogout}
+                className="logout-button"
+                style={{
+                  marginLeft: 4,
+                  border: "none",
+                  background: "transparent",
+                  color: "#c0392b",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                (Salir)
+              </button>
+            </div>
+          </header>
+
+          {/* MAIN ROUTER */}
+          <div className="app-content-wrapper">
+            {activeSection === "dashboard" && <DashboardPage />}
+            {activeSection === "patients" && <PatientsPage />}
+            {activeSection === "enrollment" && <PatientEnrollmentPage />}
+            {activeSection === "enrollments" && <EnrollmentsPage />}
+            {activeSection === "alerts" && <AlertsPage />}
+            {activeSection === "dispenses" && <DispensesPage />}
+            {activeSection === "ambulatory" && <AmbulatoryPage />}
+            {activeSection === "audit" && <AuditPage />}
+            {activeSection === "medications" && <MedicationsPage />}
+            {activeSection === "settings" && <SettingsView />}
+            {activeSection === "iaPredictiva" && <IAPredictivaPage />}
+            {activeSection === "economicsDemo" && <EconomicsDemoView />}
           </div>
-
-          <div className="app-header-user">
-            <strong>Dr. Juan Pérez</strong>
-            <span className="app-header-role">Endocrinología</span>
-          </div>
-        </header>
-
-        {/* =========================
-            SECCIÓN: DASHBOARD
-        ========================== */}
-        {activeSection === "dashboard" && (
-          <DashboardView
-            adherencePercent={adherencePercent ?? 0}
-            loadingAdherence={loadingAdherence}
-            loadingAlerts={loadingAlerts}
-            loadingPatients={loadingPatients}
-            alertCount={alertCount}
-            patientCount={patientCount}
-            mockPatients={dashboardPatients}
-            adherenceWindowDays={ADHERENCE_WINDOW_DAYS}
-          />
-        )}
-
-        {/* =========================
-            SECCIÓN: PACIENTES
-        ========================== */}
-        {activeSection === "patients" && (
-          <PatientsView
-            loading={loadingPatients}
-            patients={patients}
-            error={patientsError}
-          />
-        )}
-
-        {/* =========================
-            SECCIÓN: ALERTAS
-        ========================== */}
-        {activeSection === "alerts" && <AlertsView />}
-
-        {/* =========================
-            SECCIÓN: DISPENSAS
-        ========================== */}
-        {activeSection === "dispenses" && <DispensesView />}
-
-        {/* =========================
-            SECCIÓN: AUDITORÍA
-        ========================== */}
-        {activeSection === "audit" && <AuditView />}
-
-        {/* =========================
-            SECCIÓN: CONFIGURACIÓN
-        ========================== */}
-        {activeSection === "settings" && <SettingsView />}
-
-        {/* =========================
-            SECCIÓN: IA PREDICTIVA
-        ========================== */}
-        {activeSection === "iaPredictiva" && (
-          <IAPredictivaView currentUserRole={CURRENT_USER_ROLE} />
-        )}
-      </main>
-    </div>
+        </main>
+      </div>
+    </AuthContext.Provider>
   );
 }
 

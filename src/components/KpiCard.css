@@ -1,48 +1,125 @@
-/* integrad-dashboard\src\components\KpiCard.css */
+/* integrad-dashboard/src/components/KpiCard.css */
 
+/* =========================================================
+   Colores base
+   ========================================================= */
+:root {
+  --color-success: #16a34a;
+  --color-info: #2f42ad;
+  --color-danger: #dc2626;
+  --color-purple: #7c3aed;
+
+  --color-card-bg-test: #FFFFFF; /* Blanco Tarjetas */
+
+  --color-text-primary: #343a40;
+  --color-text-secondary: #6c757d;
+  --color-border-subtle: rgba(0, 0, 0, 0.05);
+}
+
+/* =========================================================
+   Tarjeta KPI (con sombra inspirada en la captura productiva)
+   ========================================================= */
 .kpi-card {
-    background-color: var(--bg-card, #ffffff);
-    border-radius: 16px;
-    padding: 14px 18px;
-    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  
-  /* Título del KPI */
-  .kpi-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-muted, #6b7280);
-  }
-  
-  /* Valor principal */
-  .kpi-value {
-    font-size: 24px;
-    font-weight: 800;
-  }
-  
-  /* Descripción/chiquito debajo del valor */
-  .kpi-description {
-    font-size: 12px;
-    color: var(--text-muted, #6b7280);
-  }
-  
-  /* Variantes de color */
-  .kpi-blue .kpi-value {
-    color: var(--primary, #2f42ad);
-  }
-  
-  .kpi-green .kpi-value {
-    color: var(--green, #16a34a);
-  }
-  
-  .kpi-red .kpi-value {
-    color: var(--red, #dc2626);
-  }
-  
-  .kpi-purple .kpi-value {
-    color: var(--purple, #7c3aed);
-  }
-  
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 22px 24px;
+
+  /* Sombra más profunda, elegante */
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.06),
+    0 3px 6px rgba(0, 0, 0, 0.04);
+
+  background-color: var(--color-card-bg-test);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.2s, box-shadow 0.25s;
+  min-height: 140px;
+}
+
+.kpi-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 12px 22px rgba(0, 0, 0, 0.1),
+    0 4px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* =========================================================
+   Encabezado — Ícono SVG profesional
+   ========================================================= */
+.kpi-header {
+  display: flex;
+}
+
+/* Ícono con transparencia y estilo moderno */
+.kpi-icon-svg {
+  width: 42px;
+  height: 42px;
+  stroke-width: 2.2;
+  opacity: 0.35; /* transparencia elegante */
+}
+
+/* Colores del ícono */
+.kpi-green .kpi-icon-svg {
+  color: var(--color-success);
+}
+.kpi-blue .kpi-icon-svg {
+  color: var(--color-info);
+}
+.kpi-red .kpi-icon-svg {
+  color: var(--color-danger);
+}
+.kpi-purple .kpi-icon-svg {
+  color: var(--color-purple);
+}
+
+/* =========================================================
+   Valor principal
+   ========================================================= */
+.kpi-value {
+  /* antes: 32px -> ahora tipografía escalable (valor principal grande) */
+  font-size: var(--font-size-xxl);
+  font-weight: 700;
+  line-height: 1.1;
+  margin-top: 4px;
+}
+
+/* Valor coloreado (igual a producción) */
+.kpi-green .kpi-value {
+  color: var(--color-success);
+}
+.kpi-blue .kpi-value {
+  color: var(--color-info);
+}
+.kpi-red .kpi-value {
+  color: var(--color-danger);
+}
+.kpi-purple .kpi-value {
+  color: var(--color-purple);
+}
+
+/* =========================================================
+   Textos inferiores
+   ========================================================= */
+.kpi-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kpi-title {
+  /* antes: 14px */
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.7px;
+}
+
+.kpi-description {
+  /* antes: 13px */
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}

@@ -11,49 +11,80 @@ import {
   LogOut,
   Menu,
   ChevronsRight,
-  Brain, // 👈 icono para IA Predictiva
+  Brain,
+  BarChart3,
+  Pill,
+  Stethoscope, // ⭐ Ambulatorios
+  ClipboardList, // ⭐ Enrolamiento (formulario)
 } from "lucide-react";
 
 import "./Sidebar.css";
 
-/**
- * Ajustá estas rutas según dónde tengas las imágenes:
- * - si están en src/assets → "../assets/logo-integrad-full.png"
- * - si están en public     → "/logo-integrad-full.png"
- */
 import logoFull from "../assets/logo-integrad-full.png";
 import logoIso from "../assets/logo-integrad-iso.png";
 
-// 🔹 Agregamos "iaPredictiva" al tipo de menú
-type MenuKey =
+const DEMO_MODE =
+  (import.meta.env.VITE_DEMO_MODE || "false").toLowerCase() === "true";
+
+/* ================================
+   SectionKey (secciones del menú)
+================================= */
+export type SectionKey =
   | "dashboard"
   | "patients"
+  | "enrollment" // ⭐ Enrolamiento (formulario)
+  | "enrollments" // ⭐ NUEVO: Listado de enrolamientos
   | "alerts"
   | "dispenses"
   | "audit"
+  | "medications"
   | "settings"
-  | "iaPredictiva";
+  | "iaPredictiva"
+  | "ambulatory"
+  | "economicsDemo";
 
 type MenuItem = {
   icon: React.ComponentType<{ size?: number }>;
   label: string;
-  key: MenuKey;
+  key: SectionKey;
 };
 
-// 🔹 Agregamos la opción "IA Predictiva" al menú
-const menuItems: MenuItem[] = [
+const baseMenuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", key: "dashboard" },
   { icon: Users, label: "Pacientes", key: "patients" },
+  {
+    icon: ClipboardList,
+    label: "Enrolamiento",
+    key: "enrollment",
+  },
+  {
+    icon: FileText,
+    label: "Enrolamientos",
+    key: "enrollments",
+  },
   { icon: Bell, label: "Alertas", key: "alerts" },
   { icon: Package, label: "Dispensas", key: "dispenses" },
+  { icon: Pill, label: "Medicación", key: "medications" },
+  { icon: Stethoscope, label: "Ambulatorios", key: "ambulatory" },
   { icon: FileText, label: "Auditoría", key: "audit" },
   { icon: Settings, label: "Configuración", key: "settings" },
-  { icon: Brain, label: "IA Predictiva", key: "iaPredictiva" }, // 👈 nueva sección
+  { icon: Brain, label: "IA Predictiva", key: "iaPredictiva" },
 ];
 
+const menuItems: MenuItem[] = DEMO_MODE
+  ? [
+      ...baseMenuItems,
+      {
+        icon: BarChart3,
+        label: "Impacto Económico",
+        key: "economicsDemo",
+      },
+    ]
+  : baseMenuItems;
+
 interface SidebarProps {
-  activeSection: MenuKey;
-  onSelect: (section: MenuKey) => void;
+  activeSection: SectionKey;
+  onSelect: (section: SectionKey) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSelect }) => {
@@ -67,17 +98,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSelect }) => {
 
   return (
     <aside className={`sidebar ${isCollapsed ? "collapsed" : ""}`}>
-      {/* Header con logo + botón menú */}
       <div className="sidebar-header">
         <div className="sidebar-logo-row">
           <div className="sidebar-logo">
-            {/* Logo IntegraD: iso cuando está colapsado, full cuando está expandido */}
             {isCollapsed ? (
-              <img
-                src={logoIso}
-                alt="IntegraD"
-                className="sidebar-logo-iso"
-              />
+              <img src={logoIso} alt="IntegraD" className="sidebar-logo-iso" />
             ) : (
               <div className="sidebar-logo-full-wrap">
                 <img
@@ -90,7 +115,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSelect }) => {
           </div>
         </div>
 
-        {/* Botón hamburguesa debajo del logo */}
         <button
           className="sidebar-toggle"
           onClick={handleToggle}
@@ -101,7 +125,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSelect }) => {
         </button>
       </div>
 
-      {/* Menú principal */}
       <nav className="sidebar-menu">
         {menuItems.map((item) => {
           const Icon = item.icon;
@@ -120,9 +143,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSelect }) => {
         })}
       </nav>
 
-      {/* Footer: salir */}
       <div className="sidebar-footer">
-        <button className="sidebar-item sidebar-logout">
+        <button className="sidebar-item sidebar-logout" type="button">
           <LogOut size={20} />
           <span className="sidebar-item-label">Salir</span>
         </button>

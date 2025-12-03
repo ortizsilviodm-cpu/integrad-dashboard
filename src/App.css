@@ -4,8 +4,8 @@
 /* Variables globales derivadas de TOKENS.ts */
 :root {
   --color-primary: #2f42ad;
-  --color-secondary: #a984ff;
-  --color-accent: #74d4cc;
+  --color-secondary: #FADF71;
+  --color-accent: #De5656;
 
   --color-text: #3c4262;
   --color-text-muted: #6b7280;
@@ -18,8 +18,26 @@
   --color-warning: #facc15;
   --color-error: #dc2626;
 
-  --border-radius: 16px;
-  --shadow-card: 0 10px 25px rgba(15, 23, 42, 0.08);
+  /* Aliases para componentes (KpiCard, etc.) */
+  --primary: #2f42ad;
+  --green: #16a34a;
+  --red: #dc2626;
+  --purple: #7c3aed;
+  --bg-card: #ffffff;
+
+  --border-radius: 20px;
+  --shadow-card: 0 18px 40px rgba(15, 23, 42, 0.13);
+
+  /* 🔎 Accesibilidad: escala global de fuente (se actualiza desde App.tsx) */
+  --font-scale: 1;
+
+  /* 🔤 Tamaños tipográficos derivados (toda la app debe usar estos) */
+  --font-size-xs: calc(11px * var(--font-scale));
+  --font-size-sm: calc(13px * var(--font-scale));
+  --font-size-md: calc(14px * var(--font-scale));
+  --font-size-lg: calc(16px * var(--font-scale));
+  --font-size-xl: calc(20px * var(--font-scale));
+  --font-size-xxl: calc(24px * var(--font-scale));
 }
 
 /* ============================= */
@@ -30,6 +48,8 @@ body {
   margin: 0;
   font-family: "Manrope", system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+  /* Tamaño base escalable para toda la app */
+  font-size: var(--font-size-md);
   background-color: var(--color-background);
   color: var(--color-text);
 }
@@ -45,7 +65,7 @@ body {
 
 .app-main {
   flex: 1;
-  padding: 24px 32px;
+  padding: 28px 36px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -57,15 +77,6 @@ body {
   box-sizing: border-box;
 }
 
-/* Si querés limitar el ancho máximo, podés usar esto:
-.app-main > section {
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  box-sizing: border-box;
-}
-*/
-
 /* ============================= */
 /* Encabezado principal          */
 /* ============================= */
@@ -73,47 +84,81 @@ body {
 .app-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start; /* 🔹 evita que todo se centre verticalmente */
-  margin-bottom: 1.5rem;   /* 🔹 da aire debajo del encabezado */
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
 }
 
 .app-header h1 {
   margin: 0 0 4px 0;
-  font-size: 24px;
+  font-size: var(--font-size-xxl); /* antes 24px */
   color: var(--color-primary);
 }
 
 .app-header p {
   margin: 0;
   margin-top: 4px;
-  max-width: 760px;             /* 🔹 limita ancho del texto descriptivo */
+  max-width: 760px;
   color: var(--color-text-muted);
-  line-height: 1.4;             /* 🔹 mejora lectura */
+  line-height: 1.4;
+  font-size: var(--font-size-sm); /* texto descriptivo */
 }
 
 .app-header-user {
   text-align: right;
-  font-size: 14px;
+  font-size: var(--font-size-sm); /* antes 14px */
   color: var(--color-text);
-  margin-left: 2rem;            /* 🔹 separa del texto a la izquierda */
-  padding-top: 4px;             /* 🔹 baja un poco el bloque del doctor */
+  margin-left: 2rem;
+  padding-top: 4px;
 }
 
 .app-header-role {
   display: block;
   color: var(--color-text-muted);
   margin-top: 2px;
+  font-size: var(--font-size-xs);
+}
+
+/* 🔎 Controles de tamaño de fuente en la barra superior */
+
+.font-size-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+}
+
+.font-size-controls button {
+  min-width: 30px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  font-size: var(--font-size-xs); /* antes 11px */
+  font-weight: 600;
+  color: #4b5563;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease,
+    transform 0.1s ease;
+}
+
+.font-size-controls button:hover {
+  background-color: #f3f6fb;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.font-size-controls button:active {
+  transform: translateY(1px);
 }
 
 /* ============================= */
 /* KPIs                          */
 /* ============================= */
 
-
 .app-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 18px;
+  margin-bottom: 4px;
 }
 
 /* ============================= */
@@ -123,25 +168,25 @@ body {
 .app-charts {
   display: grid;
   grid-template-columns: 2fr 1.3fr;
-  gap: 16px;
+  gap: 18px;
 }
 
 .chart-card {
   background-color: var(--color-card-bg);
   border-radius: var(--border-radius);
-  padding: 16px 20px;
+  padding: 18px 22px;
   box-shadow: var(--shadow-card);
 }
 
 .chart-card h2 {
-  margin: 0 0 4px;
-  font-size: 18px;
+  margin: 0 0 6px;
+  font-size: var(--font-size-xl); /* antes 18px */
   color: var(--color-text);
 }
 
 .chart-subtitle {
-  margin: 0 0 12px;
-  font-size: 13px;
+  margin: 0 0 14px;
+  font-size: var(--font-size-sm); /* antes 13px */
   color: var(--color-text-muted);
 }
 
@@ -153,7 +198,9 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-sm); /* antes 13px */
+  text-align: center;
+  padding: 0 16px;
 }
 
 /* ============================= */
@@ -163,15 +210,16 @@ body {
 .app-table {
   background-color: var(--color-card-bg);
   border-radius: var(--border-radius);
-  padding: 16px 20px;
+  padding: 18px 22px;
   box-shadow: var(--shadow-card);
+  margin-top: 8px;
 }
 
 .app-table table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-md); /* antes 14px */
 }
 
 .app-table th,
@@ -184,10 +232,12 @@ body {
 .app-table th {
   font-weight: 600;
   color: var(--color-text-muted);
+  font-size: var(--font-size-sm); /* un poco más chico que cuerpo */
 }
 
 .app-table td {
   color: var(--color-text);
+  font-size: var(--font-size-md);
 }
 
 /* ============================= */
@@ -208,7 +258,7 @@ body {
   padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid #e5e7eb;
-  font-size: 14px;
+  font-size: var(--font-size-md); /* antes 14px */
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   background-color: #ffffff;
@@ -220,7 +270,7 @@ body {
 }
 
 .patients-count {
-  font-size: 13px;
+  font-size: var(--font-size-sm); /* antes 13px */
   color: var(--color-text-muted);
 }
 
@@ -230,7 +280,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-sm); /* antes 13px */
   color: var(--color-text-muted);
 }
 
@@ -240,7 +290,7 @@ body {
   border: 1px solid #e5e7eb;
   background-color: #ffffff;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-sm); /* antes 13px */
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -256,6 +306,88 @@ body {
 
 .table-error {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-sm); /* antes 13px */
   color: var(--color-error);
+}
+
+/* ============================= */
+/* Botón estándar de reintento   */
+/* ============================= */
+
+.retry-button-wrapper {
+  margin-top: 0.6rem;
+  display: flex;
+  justify-content: center;
+}
+
+.retry-button {
+  padding: 0.55rem 1.2rem;
+  background-color: var(--color-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.12);
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.05s ease;
+}
+
+.retry-button:hover {
+  background-color: #23368f;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.18);
+  transform: translateY(-1px);
+}
+
+.retry-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.16);
+}
+
+.retry-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* ============================= */
+/* Ficha clínica / Enrolamiento  */
+/* ============================= */
+
+/* Grilla interna del perfil clínico (2 columnas en escritorio) */
+.clinical-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin-top: 4px;
+}
+
+@media (max-width: 960px) {
+  .clinical-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Grilla principal del formulario de enrolamiento:
+   3 tarjetas arriba usando todo el ancho, luego el fieldset clínico ocupa 1 / -1 */
+.enrollment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: flex-start;
+}
+
+@media (max-width: 1200px) {
+  .enrollment-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .enrollment-grid {
+    grid-template-columns: 1fr;
+  }
 }

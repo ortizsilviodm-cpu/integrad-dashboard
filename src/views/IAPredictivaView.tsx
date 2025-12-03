@@ -1,29 +1,32 @@
 /* integrad-dashboard/src/views/IAPredictivaView.tsx */
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  fetchIAPredictivaPreview,
-  type IAPatientRisk,
-  type IAPreviewSummary,
-  type RiskLevel,
+import type {
+  IAPatientRisk,
+  IAPreviewSummary,
+  RiskLevel,
 } from "../api/iaPredictiva";
-
-/**
- * Roles que pueden acceder a esta vista.
- * Más adelante se conectará con tu sistema real de auth.
- */
-const ALLOWED_ROLES = ["admin", "medico", "coordinador"] as const;
-type AllowedRole = (typeof ALLOWED_ROLES)[number];
+import { ShieldCheck, Activity, AlertTriangle } from "lucide-react";
 
 export interface IAPredictivaViewProps {
-  currentUserRole: string;
+  /** Indica si el usuario tiene permiso para ver la sección de IA */
+  hasAccess: boolean;
+  /** Estado de carga del contenedor */
+  loading: boolean;
+  /** Mensaje de error (si lo hubo) */
+  error: string | null;
+  /** Resumen de niveles de riesgo (puede ser null si aún no hay datos) */
+  summary: IAPreviewSummary | null;
+  /** Lista de pacientes ya ordenados por riesgo */
+  patients: IAPatientRisk[];
+  /** Handler para reintentar la carga de datos */
+  onRetry: () => void;
 }
 
 /**
  * Devuelve un color según el nivel de riesgo.
- * Usamos colores suaves para estar en línea con el resto del dashboard.
+ * Usamos colores suaves, alineados al dashboard.
  */
-function getRiskColor(level: RiskLevel): string {
+function getRiskColor(level: RiskLevel | "alto" | "medio" | "bajo"): string {
   switch (level) {
     case "alto":
       return "#ff7043"; // naranja fuerte (alerta)
@@ -35,163 +38,194 @@ function getRiskColor(level: RiskLevel): string {
   }
 }
 
-/**
- * Ordena pacientes de mayor a menor riesgo.
- */
-function sortPatientsByRisk(patients: IAPatientRisk[]): IAPatientRisk[] {
-  return [...patients].sort((a, b) => b.riskScore - a.riskScore);
-}
-
 interface SummaryCardProps {
   label: string;
   value: number;
-  bgColor: string;
+  level: "bajo" | "medio" | "alto";
 }
 
-function SummaryCard({ label, value, bgColor }: SummaryCardProps) {
+function SummaryCard({ label, value, level }: SummaryCardProps) {
+  const color = getRiskColor(level);
+  const softBg =
+    level === "alto"
+      ? "rgba(255, 112, 67, 0.12)"
+      : level === "medio"
+      ? "rgba(255, 167, 38, 0.12)"
+      : "rgba(102, 187, 106, 0.12)";
+
+  const Icon =
+    level === "alto" ? AlertTriangle : level === "medio" ? Activity : ShieldCheck;
+
   return (
     <div
       style={{
-        padding: "0.75rem 1rem",
-        borderRadius: "0.75rem",
-        backgroundColor: bgColor,
-        minWidth: "160px",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.9rem",
+        padding: "1.1rem 1.3rem",
+        borderRadius: "1.1rem",
+        backgroundColor: "#ffffff",
+        boxShadow:
+          "0 8px 16px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.04)",
+        flex: 1,
+        minWidth: 260,
       }}
     >
-      <p
-        style={{
-          margin: 0,
-          fontSize: "0.8rem",
-          fontWeight: 500,
-          color: "#000000ff", // texto oscuro
-        }}
-      >
-        {label}
-      </p>
       <div
         style={{
-          fontSize: "1.5rem",
-          fontWeight: 700,
-          marginTop: "0.25rem",
-          color: "#0a0a0aff", // texto principal oscuro
+          width: 52,
+          height: 52,
+          borderRadius: "999px",
+          backgroundColor: softBg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color,
+          flexShrink: 0,
         }}
       >
-        {value}
+        <Icon size={28} />
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span
+          style={{
+            fontSize: "var(--font-size-xs)",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            color: "#6b7280",
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            fontSize: "var(--font-size-xl)",
+            fontWeight: 700,
+            color: "#111827",
+            marginTop: 2,
+          }}
+        >
+          {value}
+        </span>
       </div>
     </div>
   );
 }
 
-/**
- * 🔹 Componente principal de la vista de IA Predictiva.
- *
- * Alineado al modelo IntegraD:
- * - No hace diagnóstico.
- * - Muestra riesgo y motivos para ayudar al equipo clínico a priorizar.
- */
 export default function IAPredictivaView({
-  currentUserRole,
+  hasAccess,
+  loading,
+  error,
+  summary,
+  patients,
+  onRetry,
 }: IAPredictivaViewProps) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<IAPreviewSummary | null>(null);
-  const [patients, setPatients] = useState<IAPatientRisk[]>([]);
-
-  const hasAccess = useMemo(
-    () => ALLOWED_ROLES.includes(currentUserRole as AllowedRole),
-    [currentUserRole]
-  );
-
-  useEffect(() => {
-    if (!hasAccess) return;
-
-    setLoading(true);
-    setError(null);
-
-    fetchIAPredictivaPreview()
-      .then((data) => {
-        setSummary(data.summary);
-        setPatients(sortPatientsByRisk(data.patients));
-      })
-      .catch((err) => {
-        console.error("Error al cargar IA Predictiva:", err);
-        setError(
-          "No se pudieron cargar los datos de IA Predictiva. Intente nuevamente."
-        );
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [hasAccess]);
-
-  // Si el usuario no tiene permiso, no mostramos nada crítico de la IA
   if (!hasAccess) {
     return (
       <section className="app-table">
-        <h2>IA Predictiva — Acceso restringido</h2>
-        <p className="chart-subtitle">
-          No tenés permisos para acceder a esta sección. Consultá con el
-          administrador del sistema si considerás que es un error.
-        </p>
+        <header className="section-header">
+          <h2>IA Predictiva — Acceso restringido</h2>
+          <p className="chart-subtitle">
+            No tenés permisos para acceder a esta sección. Consultá con el
+            administrador del sistema si considerás que es un error.
+          </p>
+        </header>
       </section>
     );
   }
 
   return (
     <section className="app-table">
+      {/* 🔹 Encabezado alineado con el resto de vistas */}
+      <header className="section-header">
+        <h2>IA Predictiva — Riesgo y adherencia</h2>
+        <p className="chart-subtitle">
+          Visualización interna del riesgo estimado y adherencia de pacientes,
+          sin emitir diagnóstico automático.
+        </p>
+      </header>
+
+      {/* Estado: cargando */}
       {loading && (
         <div className="chart-placeholder">Cargando datos de riesgo…</div>
       )}
 
-      {error && !loading && (
+      {/* Estado: error */}
+      {!loading && error && (
         <div className="chart-placeholder">
           <strong>Error:</strong> {error}
+          <div className="retry-button-wrapper">
+            <button
+              type="button"
+              className="retry-button"
+              onClick={onRetry}
+            >
+              Reintentar
+            </button>
+          </div>
         </div>
       )}
 
+      {/* Contenido principal */}
       {!loading && !error && summary && (
         <>
-          {/* Resumen de niveles de riesgo */}
           <section
             style={{
               display: "flex",
               gap: "1rem",
-              marginBottom: "1.5rem",
+              marginBottom: "0.75rem",
               flexWrap: "wrap",
-              alignItems: "center",
             }}
           >
             <SummaryCard
               label="Riesgo bajo"
               value={summary.bajo}
-              bgColor="#66BB6A"
+              level="bajo"
             />
             <SummaryCard
               label="Riesgo medio"
               value={summary.medio}
-              bgColor="#FFA726"
+              level="medio"
             />
             <SummaryCard
               label="Riesgo alto"
               value={summary.alto}
-              bgColor="#DC2626"
+              level="alto"
             />
+          </section>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              marginBottom: "1.5rem",
+            }}
+          >
             <div
               style={{
-                marginLeft: "auto",
-                fontSize: "0.85rem",
-                color: "#555",
+                padding: "0.4rem 1.1rem",
+                borderRadius: "999px",
+                backgroundColor: "#eef2ff",
+                border: "1px solid rgba(129, 140, 248, 0.6)",
+                fontSize: "var(--font-size-sm)",
+                fontWeight: 600,
+                color: "#1f2937",
               }}
             >
               Total de pacientes analizados:{" "}
-              <strong>{patients.length}</strong>
+              <span style={{ color: "#111827" }}>{patients.length}</span>
             </div>
-          </section>
+          </div>
 
-          {/* Tabla de pacientes */}
           <section>
-            <h3 style={{ marginBottom: "0.75rem" }}>
+            <h3
+              style={{
+                marginBottom: "0.75rem",
+                fontSize: "var(--font-size-lg)",
+              }}
+            >
               Pacientes ordenados por riesgo
             </h3>
             {patients.length === 0 ? (
@@ -221,13 +255,17 @@ export default function IAPredictivaView({
                         <td>
                           <span
                             style={{
-                              display: "inline-block",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
                               padding: "0.15rem 0.6rem",
                               borderRadius: "999px",
-                              fontSize: "0.8rem",
+                              fontSize: "var(--font-size-xs)",
                               color: "#fff",
                               backgroundColor: getRiskColor(p.riskLevel),
                               textTransform: "capitalize",
+                              minWidth: 80,
+                              height: 24,
                             }}
                           >
                             {p.riskLevel}
@@ -242,18 +280,34 @@ export default function IAPredictivaView({
                               }}
                             >
                               {p.reasons.slice(0, 3).map((reason, idx) => (
-                                <li key={idx} style={{ marginBottom: "0.15rem" }}>
+                                <li
+                                  key={idx}
+                                  style={{
+                                    marginBottom: "0.15rem",
+                                    fontSize: "var(--font-size-sm)",
+                                  }}
+                                >
                                   {reason}
                                 </li>
                               ))}
                               {p.reasons.length > 3 && (
-                                <li style={{ fontStyle: "italic" }}>
+                                <li
+                                  style={{
+                                    fontStyle: "italic",
+                                    fontSize: "var(--font-size-sm)",
+                                  }}
+                                >
                                   + {p.reasons.length - 3} motivo(s) más
                                 </li>
                               )}
                             </ul>
                           ) : (
-                            <span style={{ color: "#888" }}>
+                            <span
+                              style={{
+                                color: "#888",
+                                fontSize: "var(--font-size-sm)",
+                              }}
+                            >
                               Sin motivos detallados
                             </span>
                           )}
@@ -266,6 +320,12 @@ export default function IAPredictivaView({
             )}
           </section>
         </>
+      )}
+
+      {!loading && !error && !summary && (
+        <div className="chart-placeholder">
+          No hay datos de IA predictiva disponibles en este momento.
+        </div>
       )}
     </section>
   );

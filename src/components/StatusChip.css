@@ -1,18 +1,23 @@
-/* integrad-dashboard/src/components/StatusChip.css */
 /* Chips de estado IntegraD */
 
 .status-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 10px;
-  font-size: 13px;
+
+  /* Tamaño base (escala con A-/A/A+ porque usa rem) */
+  padding: 0.15rem 0.9rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  border-radius: 6px; /* menos redondo, más “chip” */
-  color: #ffffff;
+  border-radius: 999px;
+
   text-align: center;
-  min-width: 110px;
-  gap: 6px;
+  white-space: nowrap;
+  gap: 0.35rem;
+  min-width: 7rem;       /* ≈ 112px, mismo ancho para todos */
+  height: 1.6rem;        /* alto consistente */
+
+  color: #ffffff;
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
@@ -21,34 +26,37 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 1.1rem;
+  height: 1.1rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.18);
-  font-size: 11px;
+  font-size: 0.7rem;
 }
 
-/* texto */
+/* Texto */
 .status-chip-label {
   white-space: nowrap;
 }
 
 /* Colores por tipo (usan las mismas variables del dashboard con fallback) */
-.status-chip.success {
+.status-chip--success {
   background-color: var(--color-success, #22c55e); /* verde */
+  color: #ffffff;
 }
 
-.status-chip.warning {
+.status-chip--warning {
   background-color: var(--color-warning, #facc15); /* amarillo */
   color: #111827;
 }
 
-.status-chip.error {
+.status-chip--error {
   background-color: var(--color-error, #ef4444); /* rojo */
+  color: #ffffff;
 }
 
-.status-chip.neutral {
+.status-chip--neutral {
   background-color: #9ca3af; /* gris */
+  color: #ffffff;
 }
 
 /* Efecto hover suave */

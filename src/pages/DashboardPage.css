@@ -1,0 +1,195 @@
+/* integrad-dashboard/src/pages/DashboardPage.css */
+
+/*
+  Definición de variables de color, tipografía y espaciado
+  basadas en el mockup para consistencia de IntegraD.
+  ⚠️ Las fuentes se conectan al sistema global de App.css
+  usando --font-size-* que ya respetan --font-scale.
+*/
+
+:root {
+  /* Colores primarios */
+  --color-primary: #69AFFA; /* Azul (para links/botones si no son específicos) */
+  --color-success: #28a745; /* Verde para Adherencia */
+  --color-warning: #ffc107; /* Amarillo para alertas medias */
+  --color-danger: #dc3545; /* Rojo para Alertas críticas */
+  --color-info: #17a2b8; /* Azul claro (e.g., para Glucemia Promedio) */
+  
+  /* Paleta de grises (backgrounds y textos) */
+  --color-bg-light: #f4f6f8; /* Fondo general del dashboard */
+  --color-card-bg: #ffffff; /* Fondo de tarjetas y contenedores */
+  --color-text-primary: #343a40; /* Títulos y texto principal */
+  --color-text-secondary: #6c757d; /* Subtítulos y descripciones */
+  --color-border: #e9ecef; /* Bordes sutiles */
+
+  /* Tipografía:
+     usamos la misma familia que App.css
+     y derivamos el tamaño base de --font-size-md
+  */
+  --font-family-primary: "Manrope", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --font-size-base: var(--font-size-md);
+  
+  /* Espaciado (basado en el mockup, usando un sistema de 8px) */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+}
+
+/* 1. Contenedor principal y espaciado */
+.dashboard-container {
+  padding: var(--spacing-lg); /* Espacio interior del Dashboard */
+  background-color: var(--color-bg-light);
+  min-height: 100vh;
+  font-family: var(--font-family-primary);
+  color: var(--color-text-primary);
+}
+
+/* 2. Encabezado */
+.dashboard-header {
+  margin-bottom: var(--spacing-xl); /* Espacio debajo del encabezado */
+}
+
+.dashboard-title {
+  margin: 0;
+  /* Título principal del dashboard (ligeramente más grande) */
+  font-size: var(--font-size-xxl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.dashboard-subtitle {
+  margin-top: var(--spacing-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+}
+
+.dashboard-meta-info {
+  margin-top: var(--spacing-sm);
+  color: #a0a0a0; /* Un gris más claro para la metadata */
+  font-size: var(--font-size-xs);
+}
+
+/* 3. Grilla de KPIs (4 columnas) */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr); /* 4 tarjetas de igual ancho */
+  gap: var(--spacing-md); /* Espaciado entre las tarjetas */
+  margin-bottom: var(--spacing-xl); /* Espacio entre KPIs y gráficos */
+}
+
+/* 4. Grilla de Gráficos (2 columnas) */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr; /* Adherencia (más ancho) y Alertas (más chico) */
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl); /* Espacio entre gráficos y tabla */
+}
+
+.chart-card {
+  background-color: var(--color-card-bg);
+  padding: var(--spacing-lg);
+  border-radius: 8px; /* Bordes suaves */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -2px rgba(0, 0, 0, 0.06); /* Sombra sutil para profundidad */
+}
+
+.chart-title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.chart-subtitle {
+  margin-top: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* 5. Tabla de seguimiento */
+.dashboard-table-section {
+  /* Mantiene el espaciado antes de la tabla, usa los estilos de título */
+}
+
+.section-title {
+  /* Reutiliza estilo de título de gráfico, pero dejamos explícito */
+  margin: 0;
+  margin-top: var(--spacing-lg);
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.section-subtitle {
+  margin-top: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* 6. Estilos de estado (Loading, Error, Empty) */
+
+.status-message {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: 6px;
+  margin-top: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  font-size: var(--font-size-sm);
+}
+
+.status-message--loading {
+  background-color: #e6f7ff;
+  color: #0050b3;
+  border-left: 4px solid #1890ff;
+}
+
+.status-message--empty {
+  background-color: #fffbe6;
+  color: #d46b08;
+  border-left: 4px solid #faad14;
+}
+
+.status-message--error {
+  background-color: #fff1f0;
+  color: #cf1322;
+  border-left: 4px solid #f5222d;
+  display: flex;
+  flex-direction: column;
+}
+
+.status-message--error p {
+  margin: 0;
+}
+
+.retry-button {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: 6px;
+  border: 1px solid #ff7a45; /* Color secundario para botón de error */
+  background: #ffffff;
+  color: #ff7a45;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  align-self: flex-start; /* Alinea el botón a la izquierda */
+  transition: all 0.3s;
+}
+
+.retry-button:hover {
+  background: #fff0e8;
+}
+
+/* Media Query básico para móviles (se puede mejorar) */
+@media (max-width: 1024px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr); /* 2 columnas en tablets */
+  }
+  .charts-grid {
+    grid-template-columns: 1fr; /* 1 columna en tablets/móviles */
+  }
+}

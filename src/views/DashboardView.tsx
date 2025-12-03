@@ -36,11 +36,11 @@ export default function DashboardView({
   adherenceWindowDays,
 }: DashboardViewProps) {
   return (
-    <>
+    <main className="dashboard-page">
       {/* KPIs superiores */}
-      <section className="app-kpis">
+      <section className="dashboard-section app-kpis">
         <KpiCard
-          title="Adherencia de Medicación"
+          title="Adherencia"
           value={loadingAdherence ? "..." : `${adherencePercent} %`}
           description={`Promedio últimos ${adherenceWindowDays} días`}
           color="green"
@@ -52,40 +52,44 @@ export default function DashboardView({
           color="blue"
         />
         <KpiCard
-          title="Alertas Abiertas"
+          title="Alertas de Medicación"
           value={loadingAlerts ? "..." : `${alertCount}`}
           description="Hipo/Hiper sin resolver"
           color="red"
         />
         <KpiCard
           title="Glucemia Promedio Global"
-          value="142 mg/dL"
+          value="176 mg/dL"
           description="Cohorte actual"
           color="purple"
         />
       </section>
 
       {/* Tarjetas de gráficos */}
-      <section className="app-charts">
-        <div className="chart-card">
-          <h2>Evolución de Adherencia</h2>
-          <p className="chart-subtitle">Comparativo por mes</p>
-          <AdherenceBarChart />
-        </div>
+      <section className="dashboard-section app-charts">
+        <div className="chart-grid">
+          <article className="chart-card">
+            <h2>Evolución de Adherencia</h2>
+            <p className="chart-subtitle">Comparativo por mes</p>
+            <AdherenceBarChart />
+          </article>
 
-        <div className="chart-card">
-          <h2>Distribución de Alertas</h2>
-          <p className="chart-subtitle">Hipo vs Hiper</p>
-          <AlertsDonutChart />
+          <article className="chart-card">
+            <h2>Distribución de Alertas</h2>
+            <p className="chart-subtitle">Hipo vs Hiper</p>
+            <AlertsDonutChart />
+          </article>
         </div>
       </section>
 
       {/* Tabla de pacientes demo */}
-      <section className="app-table">
-        <h2>Pacientes en Seguimiento</h2>
-        <p className="chart-subtitle">
-           Últimas mediciones de glucemia, adherencia y estado de control.
-        </p>
+      <section className="dashboard-section app-table">
+        <header className="section-header">
+          <h2>Pacientes en Seguimiento</h2>
+          <p className="chart-subtitle">
+            Últimas mediciones de glucemia, adherencia y estado de control.
+          </p>
+        </header>
 
         <table>
           <thead>
@@ -112,6 +116,6 @@ export default function DashboardView({
           </tbody>
         </table>
       </section>
-    </>
+    </main>
   );
 }

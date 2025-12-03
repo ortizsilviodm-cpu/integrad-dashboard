@@ -1,0 +1,173 @@
+/* integrad-dashboard/src/views/EconomicsDemoView.css */
+/* Estilos específicos de la vista de Impacto Económico,
+   apoyados en las variables globales del dashboard. */
+
+.econ {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Encabezado de sección */
+.econ .app-section-header {
+  margin-bottom: 18px;
+}
+
+.econ .app-section-header h1 {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.econ .app-section-header .text-muted {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+}
+
+/* Tarjetas contenedoras (tabla y top 5) */
+.econ .card {
+  background-color: var(--color-card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-card);
+  padding: 20px 24px; /* alineado con .chart-card y .app-table */
+}
+
+.econ .card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* 🔎 Título de tarjeta: sin font-size fijo, respeta el global */
+.econ .card-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Botón primario (Exportar CSV) */
+.econ .btn.primary {
+  padding: 6px 14px;
+  /*border-radius: 999px;*/
+  border: none;
+  background-color: var(--color-primary);
+  color: #ffffff;
+  font-size: calc(0.85rem * var(--font-scale));
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.12);
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.05s ease;
+}
+
+.econ .btn.primary:hover:not(:disabled) {
+  background-color: #23368f;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.18);
+}
+
+.econ .btn.primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* Tabla principal */
+.econ .table-wrap {
+  overflow-x: auto;
+  margin-top: 4px;
+}
+
+.econ .table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 820px;
+  /* ✅ ahora escala con --font-scale */
+  font-size: calc(0.9rem * var(--font-scale));
+}
+
+.econ .table th,
+.econ .table td {
+  padding: 10px 12px; /* alineado con .app-table */
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+
+.econ .table th {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.econ .table tbody tr:hover {
+  background-color: #f3f4f6;
+}
+
+/* Badges de alertas en la tabla */
+.econ .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: calc(0.8rem * var(--font-scale));
+  font-weight: 600;
+}
+
+.econ .badge.ok {
+  background-color: rgba(22, 163, 74, 0.08);
+  color: var(--color-success);
+}
+
+.econ .badge.warn {
+  background-color: rgba(234, 179, 8, 0.1);
+  color: #b45309;
+}
+
+/* Lista Top 5 — Ahorro potencial */
+.econ .list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.econ .list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background-color: var(--color-card-bg);
+}
+
+.econ .list-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.econ .list-right {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+/* Colores ROI */
+.econ .roi-pos {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.econ .roi-neg {
+  color: var(--color-error);
+  font-weight: 700;
+}
+
+/* Nota al pie */
+.econ .footnote {
+  margin-top: 10px;
+  font-size: calc(0.8rem * var(--font-scale));
+  color: var(--color-text-muted);
+}

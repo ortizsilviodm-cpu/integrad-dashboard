@@ -1,5 +1,3 @@
-/* integrad-dashboard/src/components/StatusChip.tsx */
-
 import React from "react";
 import "./StatusChip.css";
 
@@ -46,7 +44,7 @@ const StatusChip: React.FC<StatusChipProps> = ({ label, type }) => {
   const finalType: StatusType = type ?? inferTypeFromLabel(label);
 
   return (
-    <span className={`status-chip ${finalType}`}>
+    <span className={`status-chip status-chip--${finalType}`}>
       <span className="status-chip-icon">
         {finalType === "success" && "✓"}
         {finalType === "warning" && "!"}

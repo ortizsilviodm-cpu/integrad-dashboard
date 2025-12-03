@@ -1,4 +1,4 @@
-/* integrad-dashboard\src\components\Sidebar.css */
+/* integrad-dashboard/src/components/Sidebar.css */
 
 /* CONTENEDOR PRINCIPAL */
 .sidebar {
@@ -11,6 +11,8 @@
   box-shadow: 4px 0 15px rgba(15, 23, 42, 0.35);
   transition: width 0.3s ease-in-out;
   position: relative;
+  /* 🔤 Tamaño base escalable para todo el sidebar */
+  font-size: var(--font-size-md);
 }
 
 .sidebar.collapsed {
@@ -27,9 +29,9 @@
 /* --- Logo centrado correctamente --- */
 .sidebar-logo-row {
   display: flex;
-  align-items: center;    /* centra verticalmente dentro del header */
+  align-items: center; /* centra verticalmente dentro del header */
   justify-content: center; /* centra horizontalmente */
-  height: 90px;            /* altura fija visible */
+  height: 90px; /* altura fija visible */
 }
 
 .sidebar-logo {
@@ -47,14 +49,14 @@
 }
 
 .sidebar-logo-full {
-  height: 60px;  /* ajustá entre 55–65 según el tamaño de tu imagen */
+  height: 60px; /* ajustá entre 55–65 según el tamaño de tu imagen */
   width: auto;
   display: block;
 }
 
 .sidebar-logo-iso {
-  width: 80px;
-  height: 75px;
+  width: 86px;
+  height: 73px;
   display: block;
   margin: 0 auto;
 }
@@ -63,7 +65,6 @@
 .sidebar.collapsed .sidebar-logo-text {
   display: none;
 }
-
 
 /* BOTÓN HAMBURGUESA */
 .sidebar-toggle {
@@ -119,7 +120,7 @@
   background: transparent;
   color: #e5e7eb;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-md); /* antes 14px fijo */
   transition: all 0.2s ease-in-out;
 }
 
