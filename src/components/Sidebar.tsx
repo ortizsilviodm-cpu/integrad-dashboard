@@ -14,8 +14,9 @@ import {
   Brain,
   BarChart3,
   Pill,
-  Stethoscope, // ⭐ Ambulatorios
-  ClipboardList, // ⭐ Enrolamiento (formulario)
+  Stethoscope, //  Ambulatorios
+  ClipboardList, //  Enrolamiento (formulario)
+  ClipboardCheck, //  Seguimiento / Caseload
 } from "lucide-react";
 
 import "./Sidebar.css";
@@ -32,9 +33,10 @@ const DEMO_MODE =
 export type SectionKey =
   | "dashboard"
   | "patients"
-  | "enrollment" // ⭐ Enrolamiento (formulario)
-  | "enrollments" // ⭐ NUEVO: Listado de enrolamientos
+  | "enrollment" // Enrolamiento (formulario)
+  | "enrollments" // NUEVO: Listado de enrolamientos
   | "alerts"
+  | "followup"
   | "dispenses"
   | "audit"
   | "medications"
@@ -63,6 +65,11 @@ const baseMenuItems: MenuItem[] = [
     key: "enrollments",
   },
   { icon: Bell, label: "Alertas", key: "alerts" },
+  {
+    icon: ClipboardCheck,
+    label: "Seguimiento",
+    key: "followup",
+  },
   { icon: Package, label: "Dispensas", key: "dispenses" },
   { icon: Pill, label: "Medicación", key: "medications" },
   { icon: Stethoscope, label: "Ambulatorios", key: "ambulatory" },

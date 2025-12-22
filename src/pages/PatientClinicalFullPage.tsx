@@ -1,6 +1,19 @@
 /* integrad-dashboard/src/pages/PatientClinicalFullPage.tsx */
 
 import { useEffect, useMemo, useState } from "react";
+
+import ClinicalRiskCards from "../views/patientClinical/ClinicalRiskCards";
+import PatientIdentityCard from "../views/patientClinical/PatientIdentityCard";
+import PatientProgramAdherenceCard from "../views/patientClinical/PatientProgramAdherenceCard";
+import PatientClinicalHeader from "../views/patientClinical/PatientClinicalHeader";
+
+import { MiniTrendSparkline } from "../utils/patientClinical/sparkline";
+import {
+  buildSeriesByCode,
+  getLastValueForCode,
+} from "../utils/patientClinical/history";
+import { formatIsoDateTime } from "../utils/patientClinical/formatters";
+
 import type { PatientRow } from "../api/patients";
 import {
   fetchPatientSummary,
@@ -12,167 +25,175 @@ import {
 import {
   fetchPatientMedications,
   type PatientMedicationRow,
+  fetchPatientRiskSnapshot,
+  type PatientRiskSnapshot,
+  type M5SuggestedAction,
+  type M5SuggestedActionPriority,
 } from "../api/patients";
 import AddClinicalIndicatorModal from "../components/clinical/AddClinicalIndicatorModal";
 import {
   fetchClinicalHistory,
   type ClinicalIndicatorHistoryRow,
-  type ClinicalIndicatorCode,
 } from "../api/clinicalHistory";
-import {
-  fetchPatientAlerts,
-  type PatientAlertRow,
-} from "../api/alerts";
+import { fetchPatientAlerts, type PatientAlertRow } from "../api/alerts";
 
 interface PatientClinicalFullPageProps {
   patient: PatientRow;
   onClose: () => void;
 }
 
-/**
- * Punto para minigráfico de tendencia (sparkline).
- */
-interface SparklinePoint {
-  timestamp: string;
-  value: number;
-}
-
-interface MiniTrendSparklineProps {
-  data: SparklinePoint[];
-  width?: number;
-  height?: number;
-}
-
-/**
- * Códigos que usamos para series en esta vista.
- * Extendemos el ClinicalIndicatorCode original para incluir PA sistólica/diastólica.
- */
-type SeriesCode = ClinicalIndicatorCode | "SYSTOLIC_BP" | "DIASTOLIC_BP";
-
-/**
- * Mini gráfico de línea muy simple para mostrar tendencia.
- * Sin librerías externas, solo SVG.
- */
-function MiniTrendSparkline({
-  data,
-  width = 120,
-  height = 40,
-}: MiniTrendSparklineProps) {
-  if (!data || data.length === 0) {
-    return (
-      <div style={{ fontSize: "0.75rem", color: "#9ca3af" }}>Sin datos</div>
-    );
+function riskLevelLabel(level?: PatientRiskSnapshot["riskLevel"]) {
+  switch (level) {
+    case "low":
+      return { label: "Bajo", color: "#16a34a", bg: "#dcfce7" };
+    case "medium":
+      return { label: "Moderado", color: "#92400e", bg: "#fef3c7" };
+    case "high":
+      return { label: "Alto", color: "#b91c1c", bg: "#fee2e2" };
+    case "critical":
+      return { label: "Crítico", color: "#ffffff", bg: "#b91c1c" };
+    default:
+      return { label: "Sin dato", color: "#6b7280", bg: "#f3f4f6" };
   }
+}
 
-  if (data.length === 1) {
-    return (
-      <div
-        style={{
-          fontSize: "1rem",
-          lineHeight: 1,
-          color: "#6b7280",
-        }}
-      >
-        •
-      </div>
-    );
+/**
+ * Normaliza la prioridad por si el backend manda strings inesperados.
+ */
+function normalizeM5Priority(
+  p?: unknown
+): M5SuggestedActionPriority | undefined {
+  const v = typeof p === "string" ? p.toLowerCase().trim() : "";
+  if (v === "critical") return "critical";
+  if (v === "high") return "high";
+  if (v === "medium") return "medium";
+  if (v === "low") return "low";
+  return undefined;
+}
+
+function priorityPill(priority?: M5SuggestedActionPriority) {
+  switch (priority) {
+    case "critical":
+      return {
+        label: "Crítica",
+        bg: "#b91c1c",
+        color: "#ffffff",
+        border: "1px solid #7f1d1d",
+      };
+    case "high":
+      return {
+        label: "Alta",
+        bg: "#fee2e2",
+        color: "#b91c1c",
+        border: "1px solid rgba(185,28,28,0.35)",
+      };
+    case "medium":
+      return {
+        label: "Moderada",
+        bg: "#fef3c7",
+        color: "#92400e",
+        border: "1px solid rgba(146,64,14,0.25)",
+      };
+    case "low":
+      return {
+        label: "Baja",
+        bg: "#e0f2fe",
+        color: "#0369a1",
+        border: "1px solid rgba(3,105,161,0.25)",
+      };
+    default:
+      return {
+        label: "SIN PRIORIDAD",
+        bg: "#f3f4f6",
+        color: "#6b7280",
+        border: "1px solid #e5e7eb",
+      };
   }
-
-  const padding = 4;
-  const innerWidth = width - padding * 2;
-  const innerHeight = height - padding * 2;
-
-  const values = data.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const stepX = innerWidth / Math.max(1, data.length - 1);
-
-  const points = data.map((p, index) => {
-    const x = padding + stepX * index;
-    const normalized = (p.value - min) / range;
-    const y = padding + innerHeight - normalized * innerHeight;
-    return `${x},${y}`;
-  });
-
-  const pathPoints = points.join(" ");
-
-  return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      aria-hidden="true"
-      style={{ display: "block" }}
-    >
-      <polyline
-        points={pathPoints}
-        fill="none"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {points.length > 0 && (
-        <circle
-          cx={Number(points[points.length - 1].split(",")[0])}
-          cy={Number(points[points.length - 1].split(",")[1])}
-          r={2}
-        />
-      )}
-    </svg>
-  );
 }
 
-/**
- * Agrupa el historial por código de indicador y arma las series de tendencia.
- */
-function buildSeriesByCode(history: ClinicalIndicatorHistoryRow[]) {
-  const byCode = new Map<SeriesCode, SparklinePoint[]>();
-
-  history
-    .filter((row) => row.valueNumber !== null && row.valueNumber !== undefined)
-    .sort(
-      (a, b) =>
-        new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime()
-    )
-    .forEach((row) => {
-      const existing = byCode.get(row.code as SeriesCode) ?? [];
-      existing.push({
-        timestamp: row.measuredAt,
-        value: row.valueNumber as number,
-      });
-      byCode.set(row.code as SeriesCode, existing);
-    });
-
-  return byCode;
+function formatFlagLabel(key: string): string {
+  switch (key) {
+    case "dataIncomplete":
+      return "Datos incompletos";
+    case "needsContact":
+      return "Requiere contacto";
+    case "needsClinicalReview":
+      return "Revisión clínica";
+    case "highPriorityCaseload":
+      return "Prioridad caseload";
+    default:
+      return key;
+  }
 }
 
-/**
- * Devuelve el último registro de un indicador dado.
- */
-function getLastValueForCode(
-  history: ClinicalIndicatorHistoryRow[],
-  code: SeriesCode
-) {
-  const filtered = history
-    .filter((row) => row.code === code)
-    .sort(
-      (a, b) =>
-        new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime()
-    );
-  return filtered[0] ?? null;
+function flagPillStyle(flagKey: string) {
+  switch (flagKey) {
+    case "needsContact":
+      return {
+        label: "Requiere contacto",
+        bg: "#e0f2fe",
+        color: "#0369a1",
+        border: "1px solid rgba(3,105,161,0.25)",
+      };
+    case "dataIncomplete":
+      return {
+        label: "Datos incompletos",
+        bg: "#fef3c7",
+        color: "#92400e",
+        border: "1px solid rgba(146,64,14,0.25)",
+      };
+    case "needsClinicalReview":
+      return {
+        label: "Revisión clínica",
+        bg: "#fee2e2",
+        color: "#b91c1c",
+        border: "1px solid rgba(185,28,28,0.35)",
+      };
+    case "highPriorityCaseload":
+      return {
+        label: "Prioridad caseload",
+        bg: "#f3f4f6",
+        color: "#111827",
+        border: "1px solid #e5e7eb",
+      };
+    default:
+      return {
+        label: formatFlagLabel(flagKey),
+        bg: "#f3f4f6",
+        color: "#6b7280",
+        border: "1px solid #e5e7eb",
+      };
+  }
 }
 
-/**
- * Ficha clínica completa del paciente:
- * - Datos básicos + cobertura + programa crónico
- * - Tarjetas de riesgo clínico (micro/macro)
- * - Últimos indicadores relevantes
- * - Historial clínico + tendencias
- * - KPIs 90 días
- * - Alertas clínicas activas
- * - Tratamiento farmacológico actual
- */
+function secondaryButtonStyle(isEnabled: boolean) {
+  return {
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    padding: "8px 10px",
+    cursor: isEnabled ? "pointer" : "not-allowed",
+    background: isEnabled ? "#ffffff" : "#f9fafb",
+    color: isEnabled ? "#111827" : "#9ca3af",
+    fontSize: "0.8rem",
+    fontWeight: 700 as const,
+  };
+}
+
+function signalChipStyle(isPresent: boolean) {
+  if (isPresent) {
+    return {
+      bg: "#dcfce7",
+      color: "#166534",
+      border: "1px solid rgba(22,101,52,0.25)",
+    };
+  }
+  return {
+    bg: "#f3f4f6",
+    color: "#6b7280",
+    border: "1px solid #e5e7eb",
+  };
+}
+
 export default function PatientClinicalFullPage({
   patient,
   onClose,
@@ -186,21 +207,25 @@ export default function PatientClinicalFullPage({
   >([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  // 🔔 Alertas clínicas del paciente
+  // Alertas clínicas del paciente
   const [alerts, setAlerts] = useState<PatientAlertRow[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [alertsError, setAlertsError] = useState<string | null>(null);
+
+  // M5 Snapshot
+  const [m5Snapshot, setM5Snapshot] = useState<PatientRiskSnapshot | null>(
+    null
+  );
+  const [m5Loading, setM5Loading] = useState(false);
+  const [m5Error, setM5Error] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [medLoading, setMedLoading] = useState(false);
   const [medError, setMedError] = useState<string | null>(null);
 
-  // Para poder forzar recarga del resumen/riesgo (y ahora historial + alertas)
-  // después de cargar un indicador
   const [reloadFlag, setReloadFlag] = useState(0);
 
-  // Modal "Registrar indicador clínico"
   const [showAddIndicatorModal, setShowAddIndicatorModal] =
     useState<boolean>(false);
 
@@ -221,7 +246,6 @@ export default function PatientClinicalFullPage({
 
         if (cancelled) return;
 
-        // Summary
         if (!summaryRes.ok) {
           setError(summaryRes.error);
           setLoading(false);
@@ -229,7 +253,6 @@ export default function PatientClinicalFullPage({
         }
         setSummary(summaryRes.data);
 
-        // Riesgo
         if (riskRes.ok) {
           setRisk(riskRes.data);
         } else {
@@ -237,7 +260,6 @@ export default function PatientClinicalFullPage({
           setError(riskRes.error);
         }
 
-        // Historial clínico
         if (historyRes.ok) {
           setClinicalHistory(historyRes.data ?? []);
           setHistoryError(null);
@@ -247,8 +269,7 @@ export default function PatientClinicalFullPage({
             historyRes.error ?? "No se pudo cargar el historial clínico."
           );
         }
-      } catch (err) {
-        console.error("Error cargando ficha clínica completa:", err);
+      } catch (_err) {
         if (!cancelled) {
           setError("No se pudo cargar la ficha del paciente.");
         }
@@ -260,6 +281,38 @@ export default function PatientClinicalFullPage({
     }
 
     load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [patient.id, reloadFlag]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadM5() {
+      setM5Loading(true);
+      setM5Error(null);
+
+      const res = await fetchPatientRiskSnapshot({
+        patientId: patient.id,
+        windowDays: 90,
+        modelVersion: "m5_v1",
+      });
+
+      if (cancelled) return;
+
+      if (!res.ok) {
+        setM5Snapshot(null);
+        setM5Error(res.error ?? "No se pudo cargar el snapshot M5.");
+      } else {
+        setM5Snapshot(res.data);
+      }
+
+      setM5Loading(false);
+    }
+
+    loadM5();
 
     return () => {
       cancelled = true;
@@ -279,7 +332,6 @@ export default function PatientClinicalFullPage({
     loadMeds();
   }, [patient.id]);
 
-  // 🔔 Carga de alertas clínicas por paciente
   useEffect(() => {
     let cancelled = false;
 
@@ -391,7 +443,6 @@ export default function PatientClinicalFullPage({
     );
   };
 
-  // Pill de severidad de alerta (usa severityCode para marcar más fuerte Alta/Crítica)
   const renderAlertSeverity = (
     label: string,
     severityCode?: PatientAlertRow["severityCode"]
@@ -420,7 +471,6 @@ export default function PatientClinicalFullPage({
         border = "1px solid #7f1d1d";
         break;
       default: {
-        // Fallback por texto, por si viene algo raro del backend
         const t = label.toLowerCase();
         if (t.includes("baja")) {
           bg = "#e0f2fe";
@@ -456,42 +506,37 @@ export default function PatientClinicalFullPage({
     );
   };
 
-  // Resumen de alertas por severidad (para el contador arriba de la tabla)
-  const alertsSummary = useMemo(
-    () => {
-      const summary = {
-        critical: 0,
-        high: 0,
-        medium: 0,
-        low: 0,
-        total: alerts.length,
-      };
+  const alertsSummary = useMemo(() => {
+    const summaryObj = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: alerts.length,
+    };
 
-      for (const a of alerts) {
-        switch (a.severityCode) {
-          case "critical":
-            summary.critical += 1;
-            break;
-          case "high":
-            summary.high += 1;
-            break;
-          case "medium":
-            summary.medium += 1;
-            break;
-          case "low":
-            summary.low += 1;
-            break;
-          default:
-            break;
-        }
+    for (const a of alerts) {
+      switch (a.severityCode) {
+        case "critical":
+          summaryObj.critical += 1;
+          break;
+        case "high":
+          summaryObj.high += 1;
+          break;
+        case "medium":
+          summaryObj.medium += 1;
+          break;
+        case "low":
+          summaryObj.low += 1;
+          break;
+        default:
+          break;
       }
+    }
 
-      return summary;
-    },
-    [alerts]
-  );
+    return summaryObj;
+  }, [alerts]);
 
-  // ---- Derivados del historial clínico ----
   const historySeriesByCode = useMemo(
     () => buildSeriesByCode(clinicalHistory),
     [clinicalHistory]
@@ -532,6 +577,80 @@ export default function PatientClinicalFullPage({
 
   const hasAnyHistory = clinicalHistory.length > 0;
 
+  const m5SuggestedActions: M5SuggestedAction[] = useMemo(() => {
+    return m5Snapshot?.suggestedActions ?? [];
+  }, [m5Snapshot]);
+
+  const fallbackSuggestedAction = useMemo<M5SuggestedAction | null>(() => {
+    if (!m5Snapshot) return null;
+    const hasActions = (m5Snapshot.suggestedActions ?? []).length > 0;
+    if (hasActions) return null;
+
+    if (m5Snapshot.flags?.dataIncomplete) {
+      return {
+        priority: "medium",
+        title: "Completar datos de monitoreo",
+        reason:
+          "No hay lecturas suficientes en la ventana para evaluar variabilidad y ajustar la priorización. Se recomienda contacto y registro de controles.",
+        category: "data",
+        code: "COMPLETE_DATA_WINDOW",
+      };
+    }
+
+    return null;
+  }, [m5Snapshot]);
+
+  const actionsToRender = useMemo<M5SuggestedAction[]>(() => {
+    if (m5SuggestedActions.length > 0) return m5SuggestedActions;
+    return fallbackSuggestedAction ? [fallbackSuggestedAction] : [];
+  }, [m5SuggestedActions, fallbackSuggestedAction]);
+
+  const m5ActiveFlags = useMemo(() => {
+    const f = m5Snapshot?.flags ?? {};
+    return Object.entries(f)
+      .filter(([, v]) => Boolean(v))
+      .map(([k]) => k);
+  }, [m5Snapshot]);
+
+  const m5DataIncomplete = Boolean(m5Snapshot?.flags?.dataIncomplete);
+
+  const syntheticFallbackActions = useMemo<M5SuggestedAction[]>(() => {
+    if (!m5Snapshot) return [];
+    const hasActions = (m5Snapshot.suggestedActions ?? []).length > 0;
+    if (hasActions) return [];
+    if (!m5DataIncomplete) return [];
+
+    const list: M5SuggestedAction[] = [];
+
+    if (m5Snapshot.flags?.needsContact) {
+      list.push({
+        priority: "high",
+        title: "Contactar al paciente",
+        reason:
+          "La plataforma detecta necesidad de contacto. Se recomienda validar situación, barreras y reforzar el plan de seguimiento.",
+        category: "operational",
+        code: "CONTACT_PATIENT",
+      });
+    }
+
+    list.push({
+      priority: "medium",
+      title: "Solicitar lecturas y controles",
+      reason:
+        "Datos insuficientes para análisis. Se recomienda solicitar lecturas recientes (glucemias/HbA1c) para recalcular el riesgo.",
+      category: "data",
+      code: "REQUEST_READINGS",
+    });
+
+    return list.slice(0, 2);
+  }, [m5Snapshot, m5DataIncomplete]);
+
+  const actionsToRenderFinal = useMemo<M5SuggestedAction[]>(() => {
+    if (actionsToRender.length > 0) return actionsToRender;
+    if (syntheticFallbackActions.length > 0) return syntheticFallbackActions;
+    return [];
+  }, [actionsToRender, syntheticFallbackActions]);
+
   if (loading) {
     return (
       <section className="app-table">
@@ -551,50 +670,12 @@ export default function PatientClinicalFullPage({
   }
 
   const { patient: p, adherence, kpis90d } = summary;
+  const m5Badge = riskLevelLabel(m5Snapshot?.riskLevel);
 
   return (
     <section className="app-table">
-      {/* Header ficha completa */}
-      <header className="section-header" style={{ marginBottom: 16 }}>
-        <div>
-          <h2
-            style={{
-              marginBottom: 4,
-              fontSize: "1.4rem",
-              fontWeight: 700,
-              color: "#0f172a",
-            }}
-          >
-            Ficha clínica del paciente
-          </h2>
-          <p
-            className="chart-subtitle"
-            style={{ maxWidth: 640, fontSize: "0.9rem" }}
-          >
-            Visión 360° del paciente diabético: datos básicos, riesgo clínico,
-            indicadores recientes, historial, adherencia, alertas y tratamiento
-            farmacológico.
-          </p>
-        </div>
+      <PatientClinicalHeader onClose={onClose} />
 
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            border: "none",
-            borderRadius: 999,
-            padding: "6px 14px",
-            cursor: "pointer",
-            background: "#e5e7eb",
-            fontWeight: 600,
-            fontSize: "0.85rem",
-          }}
-        >
-          ← Volver a la lista
-        </button>
-      </header>
-
-      {/* Bloque principal: datos + programa */}
       <div
         style={{
           display: "grid",
@@ -603,97 +684,548 @@ export default function PatientClinicalFullPage({
           marginBottom: 16,
         }}
       >
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: 16,
-            padding: 16,
-            boxShadow: "0 4px 12px rgba(15,23,42,0.06)",
-          }}
-        >
-          <h3
-            style={{
-              marginTop: 0,
-              marginBottom: 8,
-              fontSize: "1rem",
-              fontWeight: 600,
-              color: "#111827",
-            }}
-          >
-            Datos del paciente
-          </h3>
-          <p>
-            <strong>Nombre:</strong> {p.fullName}
-          </p>
-          <p>
-            <strong>Documento:</strong> {p.documentNumber}
-          </p>
-          <p>
-            <strong>Teléfono:</strong> {p.phone || "No registrado"}
-          </p>
-          <p>
-            <strong>Obra social:</strong> {p.payerCode || "—"}{" "}
-            {p.healthPlan ? `· ${p.healthPlan}` : ""}
-          </p>
-          <p>
-            <strong>Nº afiliado:</strong> {p.membershipCode || "—"}
-          </p>
-        </div>
-
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: 16,
-            padding: 16,
-            boxShadow: "0 4px 12px rgba(15,23,42,0.06)",
-          }}
-        >
-          <h3
-            style={{
-              marginTop: 0,
-              marginBottom: 8,
-              fontSize: "1rem",
-              fontWeight: 600,
-              color: "#111827",
-            }}
-          >
-            Programa crónico y adherencia
-          </h3>
-          <p>
-            <strong>Adherencia 90 días:</strong>{" "}
-            {Number.isFinite(adherence.coveragePercent)
-              ? `${adherence.coveragePercent.toFixed(0)} %`
-              : "Sin dato"}
-          </p>
-          <p>
-            <strong>Días de ventana:</strong> {adherence.daysWindow}
-          </p>
-          <p>
-            <strong>Días en “bache” de medicación:</strong>{" "}
-            {adherence.gapDays ?? "—"}
-          </p>
-          <p>
-            <strong>Alertas en 90 días:</strong> {kpis90d.alerts}
-          </p>
-          <p>
-            <strong>Dispensas en 90 días:</strong> {kpis90d.dispenses}
-          </p>
-        </div>
+        <PatientIdentityCard patient={p} />
+        <PatientProgramAdherenceCard adherence={adherence} kpis90d={kpis90d} />
       </div>
 
-      {/* Tarjetas de riesgo clínico */}
+      <ClinicalRiskCards risk={risk} />
+
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          gap: 12,
+          background: "#ffffff",
+          borderRadius: 16,
+          padding: 16,
+          boxShadow: "0 4px 12px rgba(15,23,42,0.06)",
           marginBottom: 16,
         }}
       >
-        {riskCard("Riesgo de retinopatía", risk?.retinopathyRisk)}
-        {riskCard("Riesgo renal", risk?.renalRisk)}
-        {riskCard("Riesgo macrovascular", risk?.macrovascularRisk)}
-        {riskCard("Riesgo neuropático", risk?.neuropathyRisk)}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <div>
+            <h3
+              style={{
+                marginTop: 0,
+                marginBottom: 2,
+                fontSize: "1rem",
+                fontWeight: 600,
+                color: "#111827",
+              }}
+            >
+              M5 — Riesgo predictivo (IA)
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.8rem", color: "#6b7280" }}>
+              Snapshot calculado para priorizar seguimiento (clínico, adherencia
+              y operativo).
+            </p>
+          </div>
+
+          <span style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+            {m5Loading
+              ? "Cargando…"
+              : m5Snapshot?.generatedAt
+              ? `Actualizado: ${formatIsoDateTime(m5Snapshot.generatedAt)}`
+              : "Sin snapshot"}
+          </span>
+        </div>
+
+        {m5Error && (
+          <p style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{m5Error}</p>
+        )}
+
+        {!m5Loading && !m5Error && !m5Snapshot && (
+          <p style={{ color: "#6b7280", fontSize: "0.85rem" }}>
+            Aún no hay snapshot M5 disponible para este paciente.
+          </p>
+        )}
+
+        {!m5Loading && !m5Error && m5Snapshot && (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+                marginTop: 10,
+              }}
+            >
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 14,
+                  padding: 12,
+                  background: "#f9fafb",
+                }}
+              >
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <span
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "4px 12px",
+                      borderRadius: 999,
+                      fontSize: "0.78rem",
+                      fontWeight: 800,
+                      color: m5Badge.color,
+                      backgroundColor: m5Badge.bg,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {m5Badge.label}
+                  </span>
+                  <div style={{ fontSize: "0.9rem", color: "#111827" }}>
+                    <strong>Score:</strong> {m5Snapshot.riskScore}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 10,
+                    marginTop: 10,
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 12,
+                      padding: 10,
+                    }}
+                  >
+                    <div style={{ color: "#6b7280", fontSize: "0.75rem" }}>
+                      Clínico
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: "1.05rem" }}>
+                      {m5Snapshot.clinicalRisk}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 12,
+                      padding: 10,
+                    }}
+                  >
+                    <div style={{ color: "#6b7280", fontSize: "0.75rem" }}>
+                      Adherencia
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: "1.05rem" }}>
+                      {m5Snapshot.adherenceRisk}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 12,
+                      padding: 10,
+                    }}
+                  >
+                    <div style={{ color: "#6b7280", fontSize: "0.75rem" }}>
+                      Operativo
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: "1.05rem" }}>
+                      {m5Snapshot.operationalRisk}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10, fontSize: "0.8rem" }}>
+                  <div style={{ color: "#6b7280", marginBottom: 6 }}>
+                    Señales detectadas
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, color: "#0f172a" }}>
+                    {m5Snapshot.reasons.slice(0, 5).map((r, i) => (
+                      <li key={`${r}-${i}`}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 14,
+                  padding: 12,
+                  background: "#ffffff",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "baseline",
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 800, color: "#111827" }}>
+                    Calidad del snapshot
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>
+                    Estado operativo para caseload
+                  </div>
+                </div>
+
+                <div style={{ fontSize: "0.85rem", color: "#111827" }}>
+                  <p style={{ margin: "6px 0" }}>
+                    <strong>Ventana:</strong> {m5Snapshot.windowDays} días ·{" "}
+                    <strong>Modelo:</strong> {m5Snapshot.modelVersion}
+                  </p>
+
+                  <div style={{ marginTop: 8 }}>
+                    <div
+                      style={{
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        color: "#111827",
+                        marginBottom: 6,
+                      }}
+                    >
+                      Señales disponibles
+                    </div>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {[
+                        {
+                          label: "Lecturas",
+                          present: Boolean(
+                            m5Snapshot.dataCompleteness.readingsPresent
+                          ),
+                        },
+                        {
+                          label: "Dispensas",
+                          present: Boolean(
+                            m5Snapshot.dataCompleteness.dispensesSignal
+                          ),
+                        },
+                        {
+                          label: "Alertas",
+                          present: Boolean(
+                            m5Snapshot.dataCompleteness.alertsSignal
+                          ),
+                        },
+                      ].map((s) => {
+                        const st = signalChipStyle(s.present);
+                        return (
+                          <span
+                            key={s.label}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 999,
+                              fontSize: "0.78rem",
+                              fontWeight: 800,
+                              background: st.bg,
+                              color: st.color,
+                              border: st.border,
+                              whiteSpace: "nowrap",
+                            }}
+                            title={s.present ? "Disponible" : "No disponible"}
+                          >
+                            {s.label}: {s.present ? "Sí" : "No"}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "baseline",
+                      marginBottom: 6,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        color: "#111827",
+                        fontSize: "0.86rem",
+                      }}
+                    >
+                      Señales operativas
+                    </div>
+                    <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>
+                      {m5ActiveFlags.length === 0
+                        ? "Sin flags activos"
+                        : `${m5ActiveFlags.length} activo(s)`}
+                    </div>
+                  </div>
+
+                  {m5ActiveFlags.length === 0 ? (
+                    <div
+                      style={{
+                        borderRadius: 12,
+                        border: "1px solid #e5e7eb",
+                        padding: 10,
+                        background: "#f9fafb",
+                        color: "#6b7280",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      No se detectaron flags de priorización en esta ventana.
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {m5ActiveFlags.map((flagKey) => {
+                        const s = flagPillStyle(flagKey);
+                        return (
+                          <span
+                            key={flagKey}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 999,
+                              fontSize: "0.78rem",
+                              fontWeight: 800,
+                              background: s.bg,
+                              color: s.color,
+                              border: s.border,
+                              whiteSpace: "nowrap",
+                            }}
+                            title={formatFlagLabel(flagKey)}
+                          >
+                            {s.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <div
+                    style={{
+                      fontWeight: 800,
+                      marginBottom: 6,
+                      color: "#111827",
+                      fontSize: "0.86rem",
+                    }}
+                  >
+                    Acciones operativas
+                  </div>
+                  <p
+                    style={{ margin: 0, fontSize: "0.78rem", color: "#6b7280" }}
+                  >
+                    “Botones de apoyo para el equipo. Por el momento no ejecutan acciones reales; 
+                    se habilitarán cuando esté listo el sistema de tareas.”
+                  </p>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 10,
+                      marginTop: 8,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={!m5Snapshot.flags?.needsClinicalReview}
+                      onClick={() => {
+                        // UI-only: pendiente implementación workflow.
+                      }}
+                      style={secondaryButtonStyle(
+                        Boolean(m5Snapshot.flags?.needsContact)
+                      )}
+                      title={
+                        m5Snapshot.flags?.needsContact
+                          ? "Disponible — ejecución pendiente del sistema de tareas"
+                          : "No aplica para este snapshot"
+                      }
+                    >
+                      Crear tarea de contacto
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!m5Snapshot.flags?.needsClinicalReview}
+                      onClick={() => {
+                        // UI-only: pendiente implementación workflow.
+                      }}
+                      style={secondaryButtonStyle(
+                        Boolean(m5Snapshot.flags?.dataIncomplete)
+                      )}
+                      title={
+                        m5Snapshot.flags?.dataIncomplete
+                          ? "Disponible — ejecución pendiente del sistema de tareas"
+                          : "No disponible con los datos actuales"
+                      }
+                    >
+                      Solicitar lecturas
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!m5Snapshot.flags?.needsClinicalReview}
+                      onClick={() => {
+                        // UI-only: pendiente implementación workflow.
+                      }}
+                      style={secondaryButtonStyle(
+                        Boolean(m5Snapshot.flags?.needsClinicalReview)
+                      )}
+                      title={
+                        m5Snapshot.flags?.needsClinicalReview
+                          ? "Disponible — ejecución pendiente del sistema de tareas"
+                          : "No disponible por condición del paciente"
+                      }
+                    >
+                      Derivar a revisión
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!m5Snapshot.flags?.needsClinicalReview}
+                      onClick={() => {
+                        // UI-only: pendiente implementación workflow.
+                      }}
+                      style={secondaryButtonStyle(
+                        Boolean(m5Snapshot.flags?.highPriorityCaseload)
+                      )}
+                      title={
+                        m5Snapshot.flags?.highPriorityCaseload
+                          ? "Disponible — ejecución pendiente del sistema de tareas"
+                          : "No aplica para este snapshot"
+                      }
+                    >
+                      Marcar prioritario
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 14,
+                    marginBottom: 12,
+                    borderTop: "1px solid #e5e7eb",
+                  }}
+                />
+
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 800,
+                      marginBottom: 6,
+                      color: "#111827",
+                    }}
+                  >
+                    Acciones sugeridas por IA
+                  </div>
+                  <p
+                    style={{ margin: 0, fontSize: "0.78rem", color: "#6b7280" }}
+                  >
+                    Sugerencias para guiar la gestión clínica y operativa. No
+                    ejecutan acciones automáticamente.
+                  </p>
+
+                  {actionsToRenderFinal.length === 0 ? (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: 10,
+                        borderRadius: 12,
+                        border: "1px solid #e5e7eb",
+                        background: "#f9fafb",
+                        color: "#6b7280",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      No hay acciones sugeridas para este paciente en esta
+                      ventana.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr",
+                        gap: 8,
+                        marginTop: 8,
+                      }}
+                    >
+                      {actionsToRenderFinal.slice(0, 6).map((a, idx) => {
+                        const normalizedPriority = normalizeM5Priority(
+                          a.priority
+                        );
+                        const pill = priorityPill(normalizedPriority);
+
+                        return (
+                          <div
+                            key={`${a.title ?? "accion"}-${idx}`}
+                            style={{
+                              borderRadius: 12,
+                              border: "1px solid #e5e7eb",
+                              background: "#ffffff",
+                              padding: 10,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 10,
+                                alignItems: "flex-start",
+                                marginBottom: a.reason ? 6 : 0,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 800,
+                                  color: "#111827",
+                                  fontSize: "0.9rem",
+                                  lineHeight: 1.2,
+                                }}
+                              >
+                                {a.title ?? "Acción sugerida"}
+                              </div>
+
+                              <span
+                                style={{
+                                  padding: "2px 8px",
+                                  borderRadius: 999,
+                                  fontSize: "0.72rem",
+                                  fontWeight: 800,
+                                  background: pill.bg,
+                                  color: pill.color,
+                                  border: pill.border,
+                                  textTransform: "uppercase",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {pill.label}
+                              </span>
+                            </div>
+
+                            {a.reason && (
+                              <div
+                                style={{
+                                  fontSize: "0.82rem",
+                                  color: "#374151",
+                                }}
+                              >
+                                {a.reason}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Indicadores recientes + KPIs 90 días */}
@@ -823,7 +1355,8 @@ export default function PatientClinicalFullPage({
             <strong>Lecturas de glucosa:</strong> {kpis90d.readings}
           </p>
           <p>
-            <strong>Episodios ambulatorios:</strong> {kpis90d.ambulatoryEpisodes}
+            <strong>Episodios ambulatorios:</strong>{" "}
+            {kpis90d.ambulatoryEpisodes}
           </p>
           <p>
             <strong>Dispensas:</strong> {kpis90d.dispenses}
@@ -834,7 +1367,7 @@ export default function PatientClinicalFullPage({
         </div>
       </div>
 
-      {/* 🔔 Alertas clínicas activas */}
+      {/* Alertas clínicas activas */}
       <div
         style={{
           background: "#ffffff",
@@ -878,7 +1411,6 @@ export default function PatientClinicalFullPage({
 
         {!alertsLoading && !alertsError && alerts.length > 0 && (
           <>
-            {/* Resumen de severidad */}
             <div
               style={{
                 display: "flex",
@@ -973,9 +1505,7 @@ export default function PatientClinicalFullPage({
                         {renderAlertSeverity(a.severityLabel, a.severityCode)}
                       </td>
                       <td style={{ padding: 6 }}>{a.title}</td>
-                      <td style={{ padding: 6 }}>
-                        {a.description ?? "—"}
-                      </td>
+                      <td style={{ padding: 6 }}>{a.description ?? "—"}</td>
                       <td style={{ padding: 6 }}>{a.detectedAtLabel}</td>
                     </tr>
                   ))}
@@ -986,7 +1516,7 @@ export default function PatientClinicalFullPage({
         )}
       </div>
 
-      {/* 🧾 Historial clínico + tendencias */}
+      {/* Historial clínico + tendencias */}
       <div
         style={{
           background: "#f9fafb",
@@ -1017,13 +1547,7 @@ export default function PatientClinicalFullPage({
             >
               Historial clínico y tendencias
             </h3>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "0.8rem",
-                color: "#6b7280",
-              }}
-            >
+            <p style={{ margin: 0, fontSize: "0.8rem", color: "#6b7280" }}>
               Evolución de los principales indicadores (HbA1c, glucemia, PA,
               IMC, función renal) a lo largo del tiempo.
             </p>
@@ -1031,7 +1555,9 @@ export default function PatientClinicalFullPage({
         </div>
 
         {historyError && (
-          <p style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{historyError}</p>
+          <p style={{ color: "#b91c1c", fontSize: "0.85rem" }}>
+            {historyError}
+          </p>
         )}
 
         {!historyError && !hasAnyHistory && (
@@ -1043,12 +1569,10 @@ export default function PatientClinicalFullPage({
 
         {!historyError && hasAnyHistory && (
           <>
-            {/* Resumen compacto con mini tendencias */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(190px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
                 gap: 12,
                 marginBottom: 16,
                 fontSize: "0.85rem",
@@ -1200,7 +1724,6 @@ export default function PatientClinicalFullPage({
               </div>
             </div>
 
-            {/* Tabla detallada de mediciones */}
             <div style={{ marginTop: 4 }}>
               <h4
                 style={{
@@ -1251,8 +1774,7 @@ export default function PatientClinicalFullPage({
                         <tr
                           key={row.id}
                           style={{
-                            background:
-                              idx % 2 === 0 ? "#ffffff" : "#f9fafb",
+                            background: idx % 2 === 0 ? "#ffffff" : "#f9fafb",
                           }}
                         >
                           <td style={{ padding: 6 }}>
@@ -1363,14 +1885,12 @@ export default function PatientClinicalFullPage({
         )}
       </div>
 
-      {/* Modal para registrar indicador clínico */}
       {showAddIndicatorModal && (
         <AddClinicalIndicatorModal
           patientId={patient.id}
           onClose={() => setShowAddIndicatorModal(false)}
           onSuccess={() => {
             setShowAddIndicatorModal(false);
-            // Recarga resumen, riesgo, historial y alertas
             setReloadFlag((n) => n + 1);
           }}
         />

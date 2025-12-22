@@ -1,8 +1,7 @@
 /* integrad-dashboard/src/pages/LoginPage.tsx */
 
-import React, { useState } from "react";
-// Se asume que esta ruta y la función 'login' existen y retornan { ok: boolean, data: { token: string } | null, error: string | null }
-import { login } from "../api/auth"; 
+import React, { useEffect, useState } from "react";
+import { login } from "../api/auth";
 import logo from "../assets/logo-integrad-full-color.png";
 
 interface LoginPageProps {
@@ -16,40 +15,47 @@ interface LoginCredentials {
 
 const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
   const [form, setForm] = useState<LoginCredentials>({
-    email: "profesional@integrad.demo", // Valor de demostración para facilitar el test
-    password: "demo",                   // Valor de demostración
+    email: "",
+    password: "",
   });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  useEffect(() => {
+    const expired = sessionStorage.getItem("auth_expired");
+    if (expired) {
+      setSessionExpired(true);
+      sessionStorage.removeItem("auth_expired");
+    }
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
+  const canSubmit = form.email.trim().length > 0 && form.password.length > 0;
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
 
-    if (!form.email || !form.password) {
+    if (!canSubmit) {
       setError("Ingresá email y contraseña.");
       return;
     }
 
     setLoading(true);
+
     try {
-      // Intenta iniciar sesión usando la API
       const result = await login({
-        email: form.email,
+        email: form.email.trim(),
         password: form.password,
       });
 
-      if (!result.ok || !result.data) {
-        // En caso de fallo de login (credenciales incorrectas, error de API)
+      if (!result.ok || !result.data?.token) {
         setError(
           result.error ||
             "No se pudo iniciar sesión. Verificá tus credenciales."
@@ -57,16 +63,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
         return;
       }
 
-      // Éxito: login() ya guardó el token. Llamamos al callback para actualizar App.tsx
       const token = result.data.token;
       onSuccessfulLogin(token);
-
     } catch (err) {
-      console.error("Error inesperado en login:", err);
-      // Usamos el mensaje del backend si está disponible, sino uno genérico.
       setError(
-        (err instanceof Error ? err.message : null) ?? 
-        "Ocurrió un error inesperado. Intentá nuevamente."
+        err instanceof Error
+          ? err.message
+          : "Ocurrió un error inesperado. Intentá nuevamente."
       );
     } finally {
       setLoading(false);
@@ -80,11 +83,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        // Fondo con gradiente oscuro acorde a la estética del dashboard
         background:
           "linear-gradient(135deg, #0f172a 0%, #1d3557 40%, #457b9d 100%)",
         padding: "1rem",
-        fontFamily: 'Inter, sans-serif',
+        fontFamily: "Inter, sans-serif",
       }}
     >
       <div
@@ -94,19 +96,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
           backgroundColor: "#ffffff",
           borderRadius: 12,
           padding: "2.5rem",
-          boxShadow:
-            "0 25px 50px -12px rgba(15, 23, 42, 0.4)", // Sombra más pronunciada
+          boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.4)",
         }}
       >
         <header style={{ marginBottom: "2rem", textAlign: "center" }}>
-          <img 
-            src={logo} 
-            alt="Logo IntegraD" 
-            style={{ height: 40, marginBottom: "1rem" }} 
-            // Fallback para imágenes
+          <img
+            src={logo}
+            alt="Logo IntegraD"
+            style={{ height: 40, marginBottom: "1rem" }}
             onError={(e) => {
-                e.currentTarget.onerror = null; 
-                e.currentTarget.src = "https://placehold.co/200x40/2563eb/ffffff?text=IntegraD"; 
+              e.currentTarget.onerror = null;
+              e.currentTarget.src =
+                "https://placehold.co/200x40/2563eb/ffffff?text=IntegraD";
             }}
           />
           <h1
@@ -126,9 +127,27 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
               color: "#6b7280",
             }}
           >
-            Iniciá sesión para acceder al panel clínico y al módulo de seguimiento.
+            Iniciá sesión para acceder al panel clínico y al módulo de
+            seguimiento.
           </p>
         </header>
+
+        {sessionExpired && (
+          <div
+            style={{
+              marginBottom: "1.5rem",
+              padding: "0.8rem 1rem",
+              borderRadius: 8,
+              backgroundColor: "#fffbeb",
+              color: "#92400e",
+              border: "1px solid #fde68a",
+              fontSize: "0.9rem",
+              fontWeight: 500,
+            }}
+          >
+            Tu sesión expiró. Iniciá sesión nuevamente.
+          </div>
+        )}
 
         {error && (
           <div
@@ -168,7 +187,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
               autoComplete="email"
               value={form.email}
               onChange={handleChange}
-              placeholder="profesional@integrad.demo"
+              placeholder="Ingresá tu email"
               required
               style={{
                 width: "100%",
@@ -176,9 +195,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
                 borderRadius: 8,
                 border: "1px solid #d1d5db",
                 fontSize: "0.95rem",
-                outline: "none",
-                transition: "border-color 0.2s",
-                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
               }}
             />
           </div>
@@ -203,7 +219,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
               autoComplete="current-password"
               value={form.password}
               onChange={handleChange}
-              placeholder="••••••••"
+              placeholder="Ingresá tu contraseña"
               required
               style={{
                 width: "100%",
@@ -211,28 +227,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
                 borderRadius: 8,
                 border: "1px solid #d1d5db",
                 fontSize: "0.95rem",
-                outline: "none",
-                transition: "border-color 0.2s",
-                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
               }}
             />
           </div>
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !canSubmit}
             style={{
               width: "100%",
               padding: "0.8rem 1rem",
               borderRadius: 8,
               border: "none",
-              backgroundColor: loading ? "#9ca3af" : "#2563eb",
+              backgroundColor: loading || !canSubmit ? "#9ca3af" : "#2563eb",
               color: "#ffffff",
               fontWeight: 700,
               fontSize: "1rem",
-              cursor: loading ? "not-allowed" : "pointer",
-              transition: "background-color 0.3s, transform 0.1s",
-              boxShadow: "0 4px 10px rgba(37, 99, 235, 0.3)",
+              cursor: loading || !canSubmit ? "not-allowed" : "pointer",
             }}
           >
             {loading ? "Ingresando..." : "Iniciar sesión"}
@@ -247,7 +258,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccessfulLogin }) => {
             textAlign: "center",
           }}
         >
-          IntegraD no reemplaza el criterio clínico. El acceso es exclusivo para equipos de salud autorizados.
+          IntegraD no reemplaza el criterio clínico. El acceso es exclusivo para
+          equipos de salud autorizados.
         </p>
       </div>
     </div>

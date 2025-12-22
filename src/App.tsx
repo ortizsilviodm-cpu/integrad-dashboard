@@ -3,11 +3,11 @@
 import { useEffect, useState, createContext, useContext } from "react";
 import "./App.css";
 
-// 🌐 Global
-import { getAuthToken, isAuthenticated } from "./store/authStore";
-import { logout } from "./api/auth";
+// Global
+import { getAuthToken, isAuthenticated, onAuthChange } from "./store/authStore";
+import { logout, fetchMe, type MeResponse } from "./api/auth";
 
-// 🏛️ Componentes
+// Components
 import Sidebar, { type SectionKey } from "./components/Sidebar";
 import LoginPage from "./pages/LoginPage";
 
@@ -22,6 +22,7 @@ import MedicationsPage from "./pages/MedicationsPage";
 import AmbulatoryPage from "./pages/AmbulatoryPage";
 import PatientEnrollmentPage from "./pages/PatientEnrollmentPage";
 import EnrollmentsPage from "./pages/EnrollmentsPage";
+import FollowupCaseloadPage from "./pages/FollowupCaseloadPage";
 
 // Views
 import SettingsView from "./views/SettingsView";
@@ -39,10 +40,7 @@ export interface User {
   specialty: string;
 }
 
-// ============================
-// 🔐 Auth Context
-// ============================
-
+// Auth Context
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
@@ -61,60 +59,135 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-// ============================
-// 🏛️ APP Principal
-// ============================
+/**
+ * /auth/me en backend puede devolver:
+ * A) { id, email, role, ... }
+ * B) { user: { id, email, role, ... }, patientId, appContext }
+ */
+function normalizeMePayload(payload: unknown): MeResponse | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const p = payload as any;
+
+  if (p.user && typeof p.user === "object") {
+    const u = p.user as any;
+    if (!u?.id) return null;
+
+    // Si tu MeResponse incluye campos extra (appContext/patientId), los dejamos pasar si existen.
+    return {
+      ...u,
+      appContext: p.appContext,
+      patientId: p.patientId,
+    } as MeResponse;
+  }
+
+  if (p.id) return p as MeResponse;
+
+  return null;
+}
+
+function mapMeToUser(me: MeResponse): User {
+  const roleLower: User["role"] = me.role === "ADMIN" ? "admin" : "professional";
+
+  const fullName =
+    me.fullName?.trim() || me.name?.trim() || me.email?.trim() || "Usuario";
+
+  return {
+    id: me.id,
+    fullName,
+    role: roleLower,
+    specialty: (me.specialty || "").trim(),
+  };
+}
+
+function roleLabel(role: User["role"]): string {
+  return role === "admin" ? "Administrador" : "Profesional";
+}
 
 const getInitialAuth = (): { user: User | null; token: string | null } => {
   const token = getAuthToken();
-  if (token) {
-    return {
-      token,
-      user: {
-        id: "demo-user-123",
-        fullName: "Dr. Juan Pérez",
-        role: "professional",
-        specialty: "Endocrinología",
-      },
-    };
-  }
-  return { user: null, token: null };
+  return { token: token || null, user: null };
 };
 
 function App() {
   const [authData, setAuthData] = useState(() => getInitialAuth());
   const [isReady, setIsReady] = useState(false);
-  const [activeSection, setActiveSection] =
-    useState<SectionKey>("dashboard");
+  const [activeSection, setActiveSection] = useState<SectionKey>("dashboard");
 
-  // 🔎 Accesibilidad: escala global de fuente (1 = 100%)
+  // Accessibility: global font scale (1 = 100%)
   const [fontScale, setFontScale] = useState<number>(1);
 
-  useEffect(() => {
+  const hydrateUser = async (): Promise<boolean> => {
     const tokenExists = isAuthenticated();
-    if (tokenExists) {
-      // En una app real: fetchUserData(token)
+    if (!tokenExists) return false;
+
+    const result = await fetchMe();
+
+    if (result.ok && result.data) {
+      const me = normalizeMePayload(result.data);
+      if (me?.id) {
+        const user = mapMeToUser(me);
+        setAuthData((prev) => ({ ...prev, user }));
+        return true;
+      }
     }
-    setIsReady(true);
+
+    logout();
+    setAuthData({ user: null, token: null });
+    setActiveSection("dashboard");
+    return false;
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthChange((token) => {
+      if (!token) {
+        setAuthData({ user: null, token: null });
+        setActiveSection("dashboard");
+      }
+    });
+
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
-    document.documentElement.style.setProperty(
-      "--font-scale",
-      String(fontScale)
-    );
+    let cancelled = false;
+
+    const boot = async () => {
+      const token = getAuthToken();
+      if (!token) {
+        if (!cancelled) setIsReady(true);
+        return;
+      }
+
+      if (!cancelled) {
+        setAuthData({ token, user: null });
+      }
+
+      await hydrateUser();
+
+      if (!cancelled) setIsReady(true);
+    };
+
+    void boot();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--font-scale", String(fontScale));
   }, [fontScale]);
 
   const handleLogin = (token: string) => {
-    setAuthData({
-      token,
-      user: {
-        id: "demo-user-123",
-        fullName: "Dr. Juan Pérez",
-        role: "professional",
-        specialty: "Endocrinología",
-      },
-    });
+    setIsReady(false);
+    setAuthData({ token, user: null });
+
+    void (async () => {
+      await hydrateUser();
+      setIsReady(true);
+    })();
   };
 
   const handleLogout = () => {
@@ -125,7 +198,7 @@ function App() {
 
   const authContextValue: AuthContextType = {
     user: authData.user,
-    isAuthenticated: !!authData.user,
+    isAuthenticated: !!authData.token && !!authData.user,
     isReady,
     login: handleLogin,
     logout: handleLogout,
@@ -133,10 +206,8 @@ function App() {
 
   const handleFontIncrease = () =>
     setFontScale((prev) => Math.min(prev + 0.1, 1.5));
-
   const handleFontDecrease = () =>
     setFontScale((prev) => Math.max(prev - 0.1, 0.9));
-
   const handleFontReset = () => setFontScale(1);
 
   const fontScalePercentage = Math.round(fontScale * 100);
@@ -161,13 +232,17 @@ function App() {
       .slice(0, 2)
       .join("") ?? "";
 
+  const secondaryLabel =
+    authData.user?.specialty?.trim()
+      ? authData.user.specialty
+      : roleLabel(authData.user?.role ?? "professional");
+
   return (
     <AuthContext.Provider value={authContextValue}>
       <div className="app-root">
         <Sidebar activeSection={activeSection} onSelect={setActiveSection} />
 
         <main className="app-main">
-          {/* TOPBAR */}
           <header
             className="app-topbar-minimal"
             style={{
@@ -180,21 +255,29 @@ function App() {
               borderBottom: "1px solid #e5e7eb",
             }}
           >
-            <div className="app-topbar-left" style={{ fontSize: 12, color: "#9ca3af" }} />
+            <div
+              className="app-topbar-left"
+              style={{ fontSize: 12, color: "#9ca3af" }}
+            />
 
             <div
               className="app-topbar-right"
               style={{ display: "flex", alignItems: "center", gap: 12 }}
             >
-              {/* Controles de accesibilidad */}
               <div
                 className="font-size-controls"
                 aria-label="Ajustar tamaño de texto"
                 style={{ display: "flex", alignItems: "center", gap: 4 }}
               >
-                <button type="button" onClick={handleFontDecrease}>A-</button>
-                <button type="button" onClick={handleFontReset}>A</button>
-                <button type="button" onClick={handleFontIncrease}>A+</button>
+                <button type="button" onClick={handleFontDecrease}>
+                  A-
+                </button>
+                <button type="button" onClick={handleFontReset}>
+                  A
+                </button>
+                <button type="button" onClick={handleFontIncrease}>
+                  A+
+                </button>
                 <span
                   style={{
                     marginLeft: 6,
@@ -259,7 +342,7 @@ function App() {
                   className="app-header-role"
                   style={{ fontSize: 11, color: "#6b7280" }}
                 >
-                  {authData.user?.specialty}
+                  {secondaryLabel}
                 </span>
               </div>
 
@@ -280,7 +363,6 @@ function App() {
             </div>
           </header>
 
-          {/* MAIN ROUTER */}
           <div className="app-content-wrapper">
             {activeSection === "dashboard" && <DashboardPage />}
             {activeSection === "patients" && <PatientsPage />}
@@ -294,6 +376,7 @@ function App() {
             {activeSection === "settings" && <SettingsView />}
             {activeSection === "iaPredictiva" && <IAPredictivaPage />}
             {activeSection === "economicsDemo" && <EconomicsDemoView />}
+            {activeSection === "followup" && <FollowupCaseloadPage />}
           </div>
         </main>
       </div>

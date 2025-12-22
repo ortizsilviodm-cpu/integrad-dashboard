@@ -199,9 +199,8 @@ const defaultEnrollmentForm: EnrollmentRequest = {
     healthPlan: DEFAULT_HEALTH_PLAN,
     planCode: "",
   },
-  appUser: {
-    email: "",
-  },
+   appUser: undefined,
+
   program: {
     mainProvider: "",
     notes: "",
@@ -344,7 +343,8 @@ const PatientEnrollmentPage: React.FC = () => {
 
     const payload: EnrollmentRequest = {
       ...form,
-      appUser: form.appUser && form.appUser.email ? form.appUser : undefined,
+      appUser:
+        form.appUser && form.appUser.email?.trim() ? form.appUser : undefined,
       program:
         form.program && (form.program.mainProvider || form.program.notes)
           ? form.program

@@ -1,14 +1,23 @@
 /* integrad-dashboard/src/api/safeFetch.ts */
 // Helper de fetch con timeout, manejo de errores centralizado, y AUTENTICACIÓN.
 
-// ⚠️ ASUNCIÓN: Esta función debe obtener el token JWT del almacenamiento o estado global.
-import { getAuthToken } from "../store/authStore"; // ⬅️ DEBE EXISTIR ESTA UTILIDAD
+import { getAuthToken } from "../store/authStore"; // ⬅️ EXISTENTE
 
 export interface SafeFetchResult<T> {
   ok: boolean;
   data: T | null;
   error: string | null;
   status: number | undefined;
+}
+
+/**
+ * Helper semántico: identifica errores de autenticación
+ * (NO cambia comportamiento, solo mejora legibilidad)
+ */
+export function isAuthError(
+  result: Pick<SafeFetchResult<any>, "status">
+): boolean {
+  return result.status === 401 || result.status === 403;
 }
 
 /**
@@ -22,7 +31,7 @@ export async function safeFetch<T>(
 ): Promise<SafeFetchResult<T>> {
   const token = getAuthToken(); // 🛡️ Obtiene el token
   const { timeoutMs = 10000, ...restInit } = init ?? {};
-  
+
   // 1. Inyección del Token JWT en los headers
   const authHeaders: Record<string, string> = {};
   if (token) {
@@ -31,7 +40,9 @@ export async function safeFetch<T>(
 
   // Combinación de headers existentes con los de autenticación
   const headers = new Headers(restInit.headers);
-  Object.keys(authHeaders).forEach(key => headers.set(key, authHeaders[key]));
+  Object.keys(authHeaders).forEach((key) =>
+    headers.set(key, authHeaders[key])
+  );
 
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -48,17 +59,14 @@ export async function safeFetch<T>(
     if (!res.ok) {
       let errorMsg: string | undefined;
       let errorBody: any;
-      
+
       // 2. Manejo avanzado de errores HTTP (4xx, 5xx)
       try {
-        // Intentar leer el JSON. Si falla, leer como texto.
         const clone = res.clone();
         errorBody = await clone.json();
-        // 🛡️ Priorizar el mensaje de error enviado por nuestro backend (ej: { error: "..." })
         errorMsg = errorBody.error || errorBody.message;
       } catch {
         try {
-          // Si no es JSON, intentar leer el texto plano
           errorMsg = await res.text();
         } catch {
           // ignore
@@ -66,7 +74,7 @@ export async function safeFetch<T>(
       }
 
       const finalError = errorMsg || `Error HTTP ${status}`;
-      
+
       return {
         ok: false,
         data: null,
@@ -80,11 +88,11 @@ export async function safeFetch<T>(
     try {
       json = (await res.json()) as T;
     } catch {
-      // Manejar caso donde el servidor devuelve 200/201 sin body (ej. no content)
       return {
         ok: false,
         data: null,
-        error: "Error interpretando la respuesta del servidor (JSON inválido o vacío).",
+        error:
+          "Error interpretando la respuesta del servidor (JSON inválido o vacío).",
         status,
       };
     }
@@ -105,10 +113,12 @@ export async function safeFetch<T>(
         status: undefined,
       };
     }
+
     return {
       ok: false,
       data: null,
-      error: "No se pudo conectar con el servidor. Revisa tu conexión a internet.",
+      error:
+        "No se pudo conectar con el servidor. Revisa tu conexión a internet.",
       status: undefined,
     };
   } finally {

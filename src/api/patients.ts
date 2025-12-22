@@ -17,6 +17,7 @@ interface PatientsApiRow {
   statusLabel: string;
   openAlerts: number;
 
+  // Enrolamiento (puede venir completo o parcial según el backend)
   enrolled?: boolean;
   programType?: string | null;
   programStatus?: string | null;
@@ -112,6 +113,25 @@ function formatAdherence(row: PatientsApiRow): string {
 }
 
 /**
+ * Determina enrolled de forma robusta:
+ * - Si backend manda `enrolled`, se respeta (fuente de verdad).
+ * - Si no lo manda, inferimos desde programStatus.
+ */
+function computeEnrolled(row: PatientsApiRow): boolean {
+  if (typeof row.enrolled === "boolean") return row.enrolled;
+
+  const status = (row.programStatus ?? "").toLowerCase().trim();
+
+  // Se aceptan variantes comunes
+  if (status === "active") return true;
+  if (status === "activo") return true;
+  if (status === "enrolled") return true;
+  if (status === "enrolado") return true;
+
+  return false;
+}
+
+/**
  * Mapea crudo → UI.
  */
 function mapApiRowToPatientRow(row: PatientsApiRow): PatientRow {
@@ -123,7 +143,7 @@ function mapApiRowToPatientRow(row: PatientsApiRow): PatientRow {
     adherence: formatAdherence(row),
     status: row.statusLabel || "En seguimiento",
 
-    enrolled: row.enrolled ?? false,
+    enrolled: computeEnrolled(row),
     programType: row.programType ?? null,
     programStatus: row.programStatus ?? null,
     enrollmentDate: row.enrollmentDate ?? null,
@@ -193,8 +213,7 @@ export async function fetchPatientsPage(params?: {
     };
 
     return { ok: true, data: mapped, error: null, meta: metaOut };
-  } catch (err) {
-    console.error("Error mapeando pacientes:", err);
+  } catch (_err) {
     return {
       ok: false,
       data: [],
@@ -217,7 +236,7 @@ export async function fetchPatientsForTable(): Promise<{
 }
 
 /* =======================================================================
- * 🧩 API — Resumen 360° del paciente
+ * API — Resumen 360° del paciente
  * =====================================================================*/
 
 interface PatientSummaryApiResponse {
@@ -232,7 +251,10 @@ interface PatientSummaryApiResponse {
     affiliateNumber: string | null;
     healthPlan: string | null;
     payerCode: string | null;
+
+    // Tolerancia a naming inconsistente
     memberShipCode?: string | null;
+    membershipCode?: string | null;
   };
   adherence: {
     patientId: string;
@@ -362,10 +384,7 @@ function mapTimelineApiToUi(
 ): PatientTimelineItem[] {
   return events
     .slice()
-    .sort(
-      (a, b) =>
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-    )
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .map((e) => ({
       id: e.id,
       type: e.type,
@@ -382,7 +401,11 @@ export async function fetchPatientSummary(
   patientId: string
 ): Promise<FetchPatientSummaryResult> {
   if (!patientId) {
-    return { ok: false, data: null, error: "Falta el identificador de paciente." };
+    return {
+      ok: false,
+      data: null,
+      error: "Falta el identificador de paciente.",
+    };
   }
 
   const endpoint = `${API_URL}/patients/${encodeURIComponent(patientId)}/summary`;
@@ -401,8 +424,7 @@ export async function fetchPatientSummary(
   try {
     const mapped = mapSummaryApiToUi(result.data);
     return { ok: true, data: mapped, error: null };
-  } catch (err) {
-    console.error("Error mapeando summary:", err);
+  } catch (_err) {
     return {
       ok: false,
       data: null,
@@ -415,10 +437,16 @@ export async function fetchPatientTimeline(
   patientId: string
 ): Promise<FetchPatientTimelineResult> {
   if (!patientId) {
-    return { ok: false, data: [], error: "Falta el identificador de paciente." };
+    return {
+      ok: false,
+      data: [],
+      error: "Falta el identificador de paciente.",
+    };
   }
 
-  const endpoint = `${API_URL}/patients/${encodeURIComponent(patientId)}/timeline`;
+  const endpoint = `${API_URL}/patients/${encodeURIComponent(
+    patientId
+  )}/timeline`;
   const result = await safeFetch<PatientTimelineApiResponse>(endpoint);
 
   if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
@@ -426,27 +454,24 @@ export async function fetchPatientTimeline(
       ok: false,
       data: [],
       error:
-        result.error ??
-        "No se pudo cargar el timeline. Intente nuevamente.",
+        result.error ?? "No se pudo cargar el timeline. Intente nuevamente.",
     };
   }
 
   try {
     const mapped = mapTimelineApiToUi(result.data.data);
     return { ok: true, data: mapped, error: null };
-  } catch (err) {
-    console.error("Error mapeando timeline:", err);
+  } catch (_err) {
     return {
       ok: false,
       data: [],
-
       error: "Error procesando el timeline.",
     };
   }
 }
 
 /* =======================================================================
- * 💊 API de Medicación del Paciente
+ * API de Medicación del Paciente
  * =====================================================================*/
 
 /**
@@ -516,7 +541,7 @@ export async function fetchPatientMedications(
 }
 
 /* =======================================================================
- * 🆕 API de Adherencia Real del Paciente (PDC)
+ * API de Adherencia Real del Paciente (PDC)
  * =====================================================================*/
 
 export interface PatientAdherenceApiResponse {
@@ -576,4 +601,190 @@ export async function fetchPatientAdherence(
     data: result.data,
     error: null,
   };
+}
+
+/* =======================================================================
+ * M5 — IA Predictiva (Risk Snapshots)
+ * =====================================================================*/
+
+export type M5RiskLevel = "low" | "medium" | "high" | "critical";
+
+export type M5SuggestedActionPriority = "low" | "medium" | "high" | "critical";
+
+/**
+ * Acciones sugeridas por IA.
+ * Campos opcionales para tolerar evolución del backend.
+ */
+export type M5SuggestedAction = {
+  priority?: M5SuggestedActionPriority | string;
+  title?: string;
+  reason?: string;
+
+  actionType?: string;
+  category?: string;
+  code?: string;
+};
+
+export type PatientRiskSnapshot = {
+  id: string;
+  patientId: string;
+
+  windowDays: number;
+  modelVersion: string;
+  generatedAt: string;
+
+  riskScore: number;
+  riskLevel: M5RiskLevel;
+
+  clinicalRisk: number;
+  adherenceRisk: number;
+  operationalRisk: number;
+
+  reasons: string[];
+  flags: {
+    needsContact: boolean;
+    dataIncomplete: boolean;
+    needsClinicalReview: boolean;
+    highPriorityCaseload: boolean;
+  };
+
+  dataCompleteness: {
+    readingsPresent: boolean;
+    dispensesSignal: boolean;
+    alertsSignal: boolean;
+  };
+
+  suggestedActions?: M5SuggestedAction[];
+};
+
+type PatientRiskSnapshotApiResponse =
+  | {
+      patientId: string;
+      snapshot: PatientRiskSnapshot;
+    }
+  | PatientRiskSnapshot;
+
+export type FetchPatientRiskSnapshotResult = {
+  ok: boolean;
+  data: PatientRiskSnapshot | null;
+  error: string | null;
+};
+
+function normalizeRiskSnapshot(
+  payload: PatientRiskSnapshotApiResponse
+): PatientRiskSnapshot | null {
+  if (!payload) return null;
+
+  // Caso A: { patientId, snapshot }
+  const maybeObj = payload as { snapshot?: unknown };
+  if (maybeObj.snapshot && typeof maybeObj.snapshot === "object") {
+    return maybeObj.snapshot as PatientRiskSnapshot;
+  }
+
+  // Caso B: snapshot directo
+  if ((payload as any).patientId && (payload as any).riskScore != null) {
+    return payload as PatientRiskSnapshot;
+  }
+
+  return null;
+}
+
+/**
+ * GET /patients/:id/risk
+ * GET /patients/:id/risk?windowDays=90&modelVersion=m5_v1
+ */
+export async function fetchPatientRiskSnapshot(params: {
+  patientId: string;
+  windowDays?: number;
+  modelVersion?: string;
+}): Promise<FetchPatientRiskSnapshotResult> {
+  const patientId = (params.patientId || "").trim();
+  if (!patientId) {
+    return {
+      ok: false,
+      data: null,
+      error: "Falta el identificador de paciente.",
+    };
+  }
+
+  const qs = new URLSearchParams();
+  if (typeof params.windowDays === "number" && params.windowDays > 0) {
+    qs.set("windowDays", String(params.windowDays));
+  }
+  if (params.modelVersion && params.modelVersion.trim()) {
+    qs.set("modelVersion", params.modelVersion.trim());
+  }
+
+  const endpoint = qs.toString()
+    ? `${API_URL}/patients/${encodeURIComponent(patientId)}/risk?${qs.toString()}`
+    : `${API_URL}/patients/${encodeURIComponent(patientId)}/risk`;
+
+  const result = await safeFetch<PatientRiskSnapshotApiResponse>(endpoint);
+
+  if (!result.ok || !result.data) {
+    return {
+      ok: false,
+      data: null,
+      error:
+        result.error ??
+        "No se pudo cargar el snapshot de riesgo (M5). Intente nuevamente.",
+    };
+  }
+
+  const snapshot = normalizeRiskSnapshot(result.data);
+  if (!snapshot) {
+    return {
+      ok: false,
+      data: null,
+      error: "Respuesta inválida del backend para snapshot de riesgo (M5).",
+    };
+  }
+
+  return { ok: true, data: snapshot, error: null };
+}
+
+export type M5StatusResponse = {
+  windowDays: number;
+  modelVersion: string;
+  latestGeneratedAt: string | null;
+  snapshotsCount: number;
+};
+
+export type FetchM5StatusResult = {
+  ok: boolean;
+  data: M5StatusResponse | null;
+  error: string | null;
+};
+
+/**
+ * GET /m5/status?windowDays=90&modelVersion=m5_v1
+ */
+export async function fetchM5Status(params?: {
+  windowDays?: number;
+  modelVersion?: string;
+}): Promise<FetchM5StatusResult> {
+  const qs = new URLSearchParams();
+  if (typeof params?.windowDays === "number" && params.windowDays > 0) {
+    qs.set("windowDays", String(params.windowDays));
+  }
+  if (params?.modelVersion && params.modelVersion.trim()) {
+    qs.set("modelVersion", params.modelVersion.trim());
+  }
+
+  const endpoint = qs.toString()
+    ? `${API_URL}/m5/status?${qs.toString()}`
+    : `${API_URL}/m5/status`;
+
+  const result = await safeFetch<M5StatusResponse>(endpoint);
+
+  if (!result.ok || !result.data) {
+    return {
+      ok: false,
+      data: null,
+      error:
+        result.error ?? "No se pudo consultar el estado de M5. Intente nuevamente.",
+    };
+  }
+
+  return { ok: true, data: result.data, error: null };
 }

@@ -30,6 +30,13 @@ export interface ClinicalRiskSummary {
   };
 }
 
+/**
+ * =========================
+ * ✅ Contrato CANÓNICO (UI)
+ * =========================
+ * Este es el tipo que consume el dashboard.
+ * La UI puede asumir que adherence existe y tiene defaults razonables.
+ */
 export interface PatientSummaryResponse {
   patient: {
     id: string;
@@ -40,16 +47,22 @@ export interface PatientSummaryResponse {
     documentNumber: string;
     phone?: string | null;
     payerCode?: string | null;
+
+    /** ✅ Campo canónico usado por la UI */
     membershipCode?: string | null;
+
     healthPlan?: string | null;
     planCode?: string | null;
   };
+
+  /** ✅ En UI NO debe ser null */
   adherence: {
     daysWindow: number;
     coveragePercent: number;
     gapDays: number;
     isLowAdherence: boolean;
   };
+
   kpis90d: {
     dispenses: number;
     ambulatoryEpisodes: number;
@@ -59,13 +72,126 @@ export interface PatientSummaryResponse {
 }
 
 /**
+ * ============================
+ * 🛡️ Contrato TOLERANTE (API)
+ * ============================
+ * Lo que podría venir del backend sin romper la UI:
+ * - adherence puede venir null
+ * - membership puede venir con nombres alternativos
+ */
+type PatientSummaryApiResponse = {
+  patient: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    documentId: string;
+    documentNumber: string;
+    phone?: string | null;
+    payerCode?: string | null;
+
+    // variantes posibles desde backend
+    membershipCode?: string | null;
+    memberShipCode?: string | null; // visto en otros mappers
+    memberShipCodeAlt?: string | null; // defensivo, por si aparece otra variante
+
+    healthPlan?: string | null;
+    planCode?: string | null;
+  };
+
+  adherence:
+    | {
+        daysWindow?: number;
+        coveragePercent?: number;
+        gapDays?: number;
+        isLowAdherence?: boolean;
+      }
+    | null;
+
+  kpis90d: {
+    dispenses?: number;
+    ambulatoryEpisodes?: number;
+    readings?: number;
+    alerts?: number;
+  };
+};
+
+function normalizePatientSummary(payload: PatientSummaryApiResponse): PatientSummaryResponse {
+  const p = payload.patient;
+
+  const membershipCode =
+    (p.membershipCode ?? null) ||
+    (p.memberShipCode ?? null) ||
+    (p.memberShipCodeAlt ?? null);
+
+  const a = payload.adherence;
+
+  // Defaults seguros para UI (evita crashes si adherence viene null o parcial)
+  const daysWindow =
+    typeof a?.daysWindow === "number" && a.daysWindow > 0 ? a.daysWindow : 90;
+
+  const coveragePercent =
+    typeof a?.coveragePercent === "number" && Number.isFinite(a.coveragePercent)
+      ? a.coveragePercent
+      : 0;
+
+  const gapDays =
+    typeof a?.gapDays === "number" && Number.isFinite(a.gapDays) ? a.gapDays : 0;
+
+  const isLowAdherence = Boolean(a?.isLowAdherence);
+
+  return {
+    patient: {
+      id: p.id,
+      firstName: p.firstName ?? "",
+      lastName: p.lastName ?? "",
+      fullName: p.fullName ?? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
+      documentId: p.documentId ?? "",
+      documentNumber: p.documentNumber ?? "",
+      phone: p.phone ?? null,
+      payerCode: p.payerCode ?? null,
+      membershipCode,
+      healthPlan: p.healthPlan ?? null,
+      planCode: p.planCode ?? null,
+    },
+    adherence: {
+      daysWindow,
+      coveragePercent,
+      gapDays,
+      isLowAdherence,
+    },
+    kpis90d: {
+      dispenses: payload.kpis90d?.dispenses ?? 0,
+      ambulatoryEpisodes: payload.kpis90d?.ambulatoryEpisodes ?? 0,
+      readings: payload.kpis90d?.readings ?? 0,
+      alerts: payload.kpis90d?.alerts ?? 0,
+    },
+  };
+}
+
+/**
  * GET /patients/:id/summary
  * Devuelve { ok, data, error } usando safeFetch.
+ *
+ * ✅ Importante:
+ * - Normaliza el payload para que el dashboard tenga un contrato estable.
+ * - Evita `any` y evita crashes por nulls.
  */
 export async function fetchPatientSummary(patientId: string) {
-  return safeFetch<PatientSummaryResponse>(
-    `${API_URL}/patients/${patientId}/summary`
-  );
+  const endpoint = `${API_URL}/patients/${encodeURIComponent(patientId)}/summary`;
+
+  const res = await safeFetch<PatientSummaryApiResponse>(endpoint);
+
+  if (!res.ok || !res.data) {
+    return { ok: false as const, data: null, error: res.error ?? "No se pudo cargar el resumen del paciente." };
+  }
+
+  try {
+    const normalized = normalizePatientSummary(res.data);
+    return { ok: true as const, data: normalized, error: null };
+  } catch (_err) {
+    return { ok: false as const, data: null, error: "Respuesta inválida del backend en /patients/:id/summary." };
+  }
 }
 
 /**
@@ -74,7 +200,7 @@ export async function fetchPatientSummary(patientId: string) {
  */
 export async function fetchClinicalRiskSummary(patientId: string) {
   return safeFetch<ClinicalRiskSummary>(
-    `${API_URL}/patients/${patientId}/clinical-risk-summary`
+    `${API_URL}/patients/${encodeURIComponent(patientId)}/clinical-risk-summary`
   );
 }
 

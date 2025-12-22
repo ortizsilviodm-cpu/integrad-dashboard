@@ -1,12 +1,11 @@
-/* integrad-dashboard/src/api/auth.ts */
+// integrad-dashboard/src/api/auth.ts
 // Lógica de autenticación del Dashboard IntegraD
 
 import { safeFetch, type SafeFetchResult } from "./safeFetch";
-import { setAuthToken, clearAuthToken } from "../store/authStore";
+import { setAuthToken, clearAuthToken, getAuthToken } from "../store/authStore";
 
-// URL base del backend
-// Asegurate de que VITE_API_URL apunte a algo como: http://localhost:4000
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+// URL del backend centralizada
+import { API_URL } from "../config/api";
 
 // Credenciales que envía el formulario de login
 export interface LoginCredentials {
@@ -15,7 +14,6 @@ export interface LoginCredentials {
 }
 
 // Usuario que devuelve el backend en /auth/login
-// (según tu router: id, email, role)
 export interface LoginUser {
   id: string;
   email: string;
@@ -23,15 +21,47 @@ export interface LoginUser {
 }
 
 // Contrato esperado del backend tras un login exitoso
-// ver: src/modules/auth/router.ts
 export interface LoginResponse {
   token: string;
   user: LoginUser;
 }
 
 /**
+ * Contrato esperado del backend para /auth/me
+ * Nota: evitamos asumir campos no garantizados. Si el backend expone
+ * fullName/specialty, se aprovechan en el frontend.
+ */
+export interface MeResponse {
+  id: string;
+  email?: string;
+  role: "ADMIN" | "PROFESSIONAL" | "OPERATOR";
+  fullName?: string;
+  specialty?: string;
+
+  // Backends a veces exponen "name" en lugar de "fullName"
+  name?: string;
+}
+
+/** Utilidades internas */
+function withAuthHeader(
+  headers: Record<string, string> = {}
+): Record<string, string> {
+  const token = getAuthToken();
+  return {
+    ...headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function isUnauthorized(result: unknown): boolean {
+  const r = result as { status?: number; statusCode?: number };
+  const s = r.status ?? r.statusCode;
+  return s === 401 || s === 403;
+}
+
+/**
  * Realiza el intento de login contra el backend.
- * Si es exitoso, guarda el token y devuelve los datos del usuario.
+ * Usa siempre API_URL, que viene del sistema de entornos del proyecto.
  */
 export async function login(
   credentials: LoginCredentials
@@ -40,25 +70,48 @@ export async function login(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
+      "Cache-Control": "no-store",
     },
+    cache: "no-store",
     body: JSON.stringify(credentials),
   });
 
-  // Si el login fue exitoso (ok: true) y recibimos el token:
   if (result.ok && result.data?.token) {
-    // 🛡️ PERSISTENCIA: Guardamos el token para futuras peticiones
     setAuthToken(result.data.token);
+  } else {
+    if (isUnauthorized(result)) {
+      clearAuthToken();
+    }
   }
 
-  // Devolvemos el resultado (con el token si fue exitoso, o el error)
   return result;
 }
 
 /**
- * Realiza el logout del usuario, eliminando el token de persistencia.
+ * Obtiene la identidad real del usuario autenticado.
+ */
+export async function fetchMe(): Promise<SafeFetchResult<MeResponse>> {
+  const result = await safeFetch<MeResponse>(`${API_URL}/auth/me`, {
+    method: "GET",
+    headers: withAuthHeader({
+      Accept: "application/json",
+      "Cache-Control": "no-store",
+    }),
+    cache: "no-store",
+  });
+
+  if (!result.ok && isUnauthorized(result)) {
+    clearAuthToken();
+    sessionStorage.setItem("auth_expired", "1");
+  }
+
+  return result;
+}
+
+/**
+ * Logout: elimina token local (persistencia).
  */
 export function logout(): void {
   clearAuthToken();
-  // Opcional: si en el futuro agregás un endpoint /auth/logout en el backend,
-  // podés llamarlo acá usando safeFetch.
 }
