@@ -14,9 +14,11 @@ import {
   Brain,
   BarChart3,
   Pill,
-  Stethoscope, //  Ambulatorios
-  ClipboardList, //  Enrolamiento (formulario)
-  ClipboardCheck, //  Seguimiento / Caseload
+  Stethoscope,
+  ClipboardList,
+  ClipboardCheck,
+  Activity,
+  GraduationCap,
 } from "lucide-react";
 
 import "./Sidebar.css";
@@ -24,26 +26,25 @@ import "./Sidebar.css";
 import logoFull from "../assets/logo-integrad-full.png";
 import logoIso from "../assets/logo-integrad-iso.png";
 
-const DEMO_MODE =
-  (import.meta.env.VITE_DEMO_MODE || "false").toLowerCase() === "true";
-
 /* ================================
    SectionKey (secciones del menú)
 ================================= */
 export type SectionKey =
   | "dashboard"
   | "patients"
-  | "enrollment" // Enrolamiento (formulario)
-  | "enrollments" // NUEVO: Listado de enrolamientos
+  | "enrollment"
+  | "enrollments"
   | "alerts"
   | "followup"
+  | "educators"
   | "dispenses"
   | "audit"
   | "medications"
   | "settings"
   | "iaPredictiva"
   | "ambulatory"
-  | "economicsDemo";
+  | "economicsDemo"
+  | "clinicalSignals";
 
 type MenuItem = {
   icon: React.ComponentType<{ size?: number }>;
@@ -66,9 +67,19 @@ const baseMenuItems: MenuItem[] = [
   },
   { icon: Bell, label: "Alertas", key: "alerts" },
   {
+    icon: Activity,
+    label: "Señales Clínicas",
+    key: "clinicalSignals",
+  },
+  {
     icon: ClipboardCheck,
     label: "Seguimiento",
     key: "followup",
+  },
+  {
+    icon: GraduationCap,
+    label: "Educadores",
+    key: "educators",
   },
   { icon: Package, label: "Dispensas", key: "dispenses" },
   { icon: Pill, label: "Medicación", key: "medications" },
@@ -76,18 +87,10 @@ const baseMenuItems: MenuItem[] = [
   { icon: FileText, label: "Auditoría", key: "audit" },
   { icon: Settings, label: "Configuración", key: "settings" },
   { icon: Brain, label: "IA Predictiva", key: "iaPredictiva" },
+  { icon: BarChart3, label: "Impacto Económico", key: "economicsDemo" },
 ];
 
-const menuItems: MenuItem[] = DEMO_MODE
-  ? [
-      ...baseMenuItems,
-      {
-        icon: BarChart3,
-        label: "Impacto Económico",
-        key: "economicsDemo",
-      },
-    ]
-  : baseMenuItems;
+const menuItems: MenuItem[] = baseMenuItems;
 
 interface SidebarProps {
   activeSection: SectionKey;

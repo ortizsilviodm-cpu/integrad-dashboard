@@ -7,29 +7,87 @@ import {
   fetchPharmaProfile,
   type PatientPharmaProfile,
 } from "../api/pharmaProfile";
-
-// ✅ Riesgo clínico resumido (endpoint /patients/:id/clinical-risk-summary)
 import {
   fetchClinicalRiskSummary,
   type ClinicalRiskSummary,
 } from "../api/patientSummary";
-
-// Medicación asignada al paciente
 import {
   fetchPatientMedications,
   type PatientMedicationRow,
 } from "../api/patients";
-
-// Modal externo
 import AddMedicationModal from "../components/medications/AddMedicationModal";
 
 interface PatientDetailPageProps {
   patient: PatientRow;
   onClose: () => void;
   onOpenPharmaDetail: (patient: PatientRow) => void;
-  // 🆕 Abrir ficha clínica completa (visión 360°)
   onOpenClinicalDetail: (patient: PatientRow) => void;
 }
+
+const CARD_STYLE: CSSProperties = {
+  background: "#ffffff",
+  borderRadius: 14,
+  padding: 18,
+  boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
+  border: "1px solid #eef2f7",
+};
+
+const SECTION_TITLE_STYLE: CSSProperties = {
+  marginTop: 0,
+  marginBottom: 12,
+  fontSize: "1rem",
+  fontWeight: 700,
+  color: "#1f2937",
+};
+
+const META_TEXT_STYLE: CSSProperties = {
+  margin: 0,
+  color: "#6b7280",
+  fontSize: "0.88rem",
+  lineHeight: 1.5,
+};
+
+const PRIMARY_BUTTON_STYLE: CSSProperties = {
+  border: "1px solid #2563eb",
+  borderRadius: 999,
+  padding: "8px 14px",
+  cursor: "pointer",
+  background: "#2563eb",
+  color: "#ffffff",
+  fontWeight: 600,
+  fontSize: "0.82rem",
+  lineHeight: 1.2,
+};
+
+const SECONDARY_BUTTON_STYLE: CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: 999,
+  padding: "8px 14px",
+  cursor: "pointer",
+  background: "#f3f4f6",
+  color: "#374151",
+  fontWeight: 600,
+  fontSize: "0.82rem",
+  lineHeight: 1.2,
+};
+
+const TABLE_HEADER_CELL_STYLE: CSSProperties = {
+  textAlign: "left",
+  padding: "10px 8px",
+  fontSize: "0.78rem",
+  fontWeight: 700,
+  color: "#475569",
+  borderBottom: "1px solid #e5e7eb",
+  whiteSpace: "nowrap",
+};
+
+const TABLE_BODY_CELL_STYLE: CSSProperties = {
+  padding: "10px 8px",
+  fontSize: "0.84rem",
+  color: "#111827",
+  borderBottom: "1px solid #f1f5f9",
+  verticalAlign: "top",
+};
 
 export default function PatientDetailPage({
   patient,
@@ -45,20 +103,15 @@ export default function PatientDetailPage({
   const [loadingMeds, setLoadingMeds] = useState<boolean>(false);
   const [medError, setMedError] = useState<string | null>(null);
 
-  // Riesgo clínico resumido (retinopatía, renal, macro, neuro)
   const [clinicalRisk, setClinicalRisk] = useState<ClinicalRiskSummary | null>(
     null
   );
   const [loadingRisk, setLoadingRisk] = useState<boolean>(false);
   const [riskError, setRiskError] = useState<string | null>(null);
 
-  // Modal “Agregar medicación”
   const [showAddMedicationModal, setShowAddMedicationModal] =
     useState<boolean>(false);
 
-  /* ============================================================
-   * 1) PERFIL FARMACOLÓGICO (dispensas)
-   * ============================================================ */
   useEffect(() => {
     if (!patient.id) return;
 
@@ -71,9 +124,6 @@ export default function PatientDetailPage({
       .finally(() => setLoadingPharma(false));
   }, [patient.id]);
 
-  /* ============================================================
-   * 2) MEDICACIÓN ACTUAL (prescripción)
-   * ============================================================ */
   const reloadMedications = () => {
     if (!patient.id) return;
 
@@ -100,9 +150,6 @@ export default function PatientDetailPage({
     reloadMedications();
   }, [patient.id]);
 
-  /* ============================================================
-   * 3) RIESGO CLÍNICO (micro / macro / renal / neuro)
-   * ============================================================ */
   useEffect(() => {
     if (!patient.id) return;
 
@@ -128,9 +175,6 @@ export default function PatientDetailPage({
       .finally(() => setLoadingRisk(false));
   }, [patient.id]);
 
-  /* ============================================================
-   * Helpers UI
-   * ============================================================ */
   const formatDate = (value?: string | null) => {
     if (!value) return "—";
     const d = new Date(value);
@@ -138,51 +182,49 @@ export default function PatientDetailPage({
   };
 
   const buildPharmaSummary = () => {
-  if (!pharma || pharma.drugs.length === 0) {
-    return {
-      totalDrugs: 0,
-      chronicDrugs: 0,
-      lastDispenseLabel: "—",
-      anyLowAdherence: false,
-    };
-  }
+    if (!pharma || pharma.drugs.length === 0) {
+      return {
+        totalDrugs: 0,
+        chronicDrugs: 0,
+        lastDispenseLabel: "—",
+        anyLowAdherence: false,
+      };
+    }
 
-  const totalDrugs = pharma.summary.totalDrugs;
-  const chronicDrugs = pharma.summary.chronicDrugs;
+    const totalDrugs = pharma.summary.totalDrugs;
+    const chronicDrugs = pharma.summary.chronicDrugs;
 
-  let lastDate: Date | null = null;
+    let lastDate: Date | null = null;
 
-  for (const d of pharma.drugs) {
-    if (!d.lastDispenseDate) continue; // FIX: evitar 1970 o invalid dates
+    for (const d of pharma.drugs) {
+      if (!d.lastDispenseDate) continue;
 
-    const current = new Date(d.lastDispenseDate);
-    if (!Number.isNaN(current.getTime())) {
-      if (!lastDate || current > lastDate) {
-        lastDate = current;
+      const current = new Date(d.lastDispenseDate);
+      if (!Number.isNaN(current.getTime())) {
+        if (!lastDate || current > lastDate) {
+          lastDate = current;
+        }
       }
     }
-  }
 
-  const lastDispenseLabel = lastDate
-    ? lastDate.toLocaleDateString("es-AR")
-    : "—";
+    const lastDispenseLabel = lastDate
+      ? lastDate.toLocaleDateString("es-AR")
+      : "—";
 
-  const anyLowAdherence = pharma.drugs.some(
-    (d) => (d.adherencePercentApprox ?? 0) < 60
-  );
+    const anyLowAdherence = pharma.drugs.some(
+      (d) => (d.adherencePercentApprox ?? 0) < 60
+    );
 
-  return {
-    totalDrugs,
-    chronicDrugs,
-    lastDispenseLabel,
-    anyLowAdherence,
+    return {
+      totalDrugs,
+      chronicDrugs,
+      lastDispenseLabel,
+      anyLowAdherence,
+    };
   };
-};
-
 
   const pharmaSummary = buildPharmaSummary();
 
-  // Badge de riesgo (bajo / medio / alto)
   const riskBadgeStyle = (
     level: "low" | "medium" | "high" | null | undefined
   ): CSSProperties => {
@@ -190,10 +232,10 @@ export default function PatientDetailPage({
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      padding: "2px 10px",
+      padding: "3px 10px",
       borderRadius: 999,
       fontSize: "0.75rem",
-      fontWeight: 600,
+      fontWeight: 700,
     };
 
     if (!level) {
@@ -214,11 +256,11 @@ export default function PatientDetailPage({
     if (level === "medium") {
       return {
         ...base,
-        background: "#fef9c3",
+        background: "#fef3c7",
         color: "#92400e",
       };
     }
-    // high
+
     return {
       ...base,
       background: "#fee2e2",
@@ -235,9 +277,6 @@ export default function PatientDetailPage({
     return "Alto";
   };
 
-  /* ============================================================
-   * RENDER
-   * ============================================================ */
   return (
     <div
       style={{
@@ -249,80 +288,92 @@ export default function PatientDetailPage({
         alignItems: "center",
         justifyContent: "center",
         zIndex: 9999,
+        padding: 24,
+        boxSizing: "border-box",
       }}
       onClick={onClose}
     >
       <div
         style={{
-          background: "#f9fafb",
-          borderRadius: 16,
+          background: "#f8fafc",
+          borderRadius: 18,
           padding: 24,
-          maxWidth: 900,
-          width: "90%",
-          boxShadow: "0 10px 40px rgba(0,0,0,0.18)",
-          maxHeight: "80vh",
+          width: "min(1180px, 96vw)",
+          boxShadow: "0 18px 50px rgba(15,23,42,0.18)",
+          maxHeight: "88vh",
           overflowY: "auto",
+          overflowX: "hidden",
+          boxSizing: "border-box",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: 16,
+            ...CARD_STYLE,
+            marginBottom: 18,
+            padding: 16,
           }}
         >
-          <div>
-            <h2 style={{ margin: 0 }}>Ficha rápida del paciente</h2>
-            <p className="chart-subtitle" style={{ marginTop: 4 }}>
-              Vista resumida de datos clínicos y estado del programa crónico.
-            </p>
-          </div>
           <div
             style={{
               display: "flex",
-              gap: 8,
-              alignItems: "center",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 16,
+              flexWrap: "wrap",
             }}
           >
-            {/* Ir a ficha clínica completa */}
-            <button
-              type="button"
-              onClick={() => onOpenClinicalDetail(patient)}
-              style={{
-                border: "1px solid #2563eb",
-                borderRadius: 999,
-                padding: "4px 10px",
-                cursor: "pointer",
-                background: "#2563eb",
-                color: "#ffffff",
-                fontWeight: 600,
-                fontSize: "0.8rem",
-              }}
-            >
-              Ver ficha clínica completa
-            </button>
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "1.35rem",
+                  color: "#1f2937",
+                }}
+              >
+                Ficha rápida del paciente
+              </h2>
+              <p
+                className="chart-subtitle"
+                style={{
+                  marginTop: 6,
+                  marginBottom: 0,
+                  color: "#6b7280",
+                  fontSize: "0.9rem",
+                  lineHeight: 1.45,
+                }}
+              >
+                Vista resumida de datos clínicos y estado del programa crónico.
+              </p>
+            </div>
 
-            <button
-              type="button"
-              onClick={onClose}
+            <div
               style={{
-                border: "none",
-                borderRadius: 999,
-                padding: "4px 10px",
-                cursor: "pointer",
-                background: "#e5e7eb",
-                fontWeight: 600,
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                flexWrap: "wrap",
               }}
             >
-              Cerrar
-            </button>
+              <button
+                type="button"
+                onClick={() => onOpenClinicalDetail(patient)}
+                style={PRIMARY_BUTTON_STYLE}
+              >
+                Ver ficha clínica completa
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                style={SECONDARY_BUTTON_STYLE}
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* ================= DATOS DEL PACIENTE ================= */}
         <div
           style={{
             display: "grid",
@@ -331,94 +382,91 @@ export default function PatientDetailPage({
             marginBottom: 16,
           }}
         >
-          {/* Datos básicos */}
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-            }}
-          >
-            <h3 style={{ marginTop: 0, marginBottom: 8 }}>Datos del paciente</h3>
-            <p>
-              <strong>Nombre:</strong> {patient.name}
-            </p>
-            <p>
-              <strong>Documento:</strong> {patient.document}
-            </p>
-            <p>
-              <strong>Última glucemia:</strong> {patient.lastGlucose}
-            </p>
-            <p>
-              <strong>Adherencia global:</strong> {patient.adherence}
-            </p>
-            <p>
-              <strong>Estado actual:</strong> {patient.status}
-            </p>
+          <div style={CARD_STYLE}>
+            <h3 style={SECTION_TITLE_STYLE}>Datos del paciente</h3>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 10,
+                fontSize: "0.9rem",
+              }}
+            >
+              <p style={{ margin: 0 }}>
+                <strong>Nombre:</strong> {patient.name}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>Documento:</strong> {patient.document}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>Última glucemia:</strong> {patient.lastGlucose}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>Adherencia global:</strong> {patient.adherence}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>Estado actual:</strong> {patient.status}
+              </p>
+            </div>
           </div>
 
-          {/* Estado del programa */}
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-            }}
-          >
-            <h3 style={{ marginTop: 0, marginBottom: 8 }}>
-              Estado del programa crónico
-            </h3>
+          <div style={CARD_STYLE}>
+            <h3 style={SECTION_TITLE_STYLE}>Estado del programa crónico</h3>
 
-            <p>
-              <strong>Programa:</strong>{" "}
-              {patient.enrolled ? patient.programType ?? "Diabetes" : "No enrolado"}
-            </p>
+            <div
+              style={{
+                display: "grid",
+                gap: 10,
+                fontSize: "0.9rem",
+              }}
+            >
+              <p style={{ margin: 0 }}>
+                <strong>Programa:</strong>{" "}
+                {patient.enrolled ? patient.programType ?? "Diabetes" : "No enrolado"}
+              </p>
 
-            <p>
-              <strong>Estado:</strong>{" "}
-              {patient.enrolled
-                ? patient.programStatus ?? "active"
-                : "Sin programa activo"}
-            </p>
+              <p style={{ margin: 0 }}>
+                <strong>Estado:</strong>{" "}
+                {patient.enrolled
+                  ? patient.programStatus ?? "active"
+                  : "Sin programa activo"}
+              </p>
 
-            <p>
-              <strong>Profesional responsable:</strong>{" "}
-              {patient.mainProvider ?? "Pendiente de asignación"}
-            </p>
+              <p style={{ margin: 0 }}>
+                <strong>Profesional responsable:</strong>{" "}
+                {patient.mainProvider ?? "Pendiente de asignación"}
+              </p>
 
-            <p>
-              <strong>Fecha de inicio:</strong>{" "}
-              {patient.enrollmentDate
-                ? formatDate(patient.enrollmentDate)
-                : "Pendiente"}
-            </p>
+              <p style={{ margin: 0 }}>
+                <strong>Fecha de inicio:</strong>{" "}
+                {patient.enrollmentDate
+                  ? formatDate(patient.enrollmentDate)
+                  : "Pendiente"}
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* ================= RIESGO CLÍNICO ================= */}
         <div
           style={{
-            background: "#ffffff",
-            borderRadius: 12,
-            padding: 16,
+            ...CARD_STYLE,
             marginBottom: 16,
-            boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
           }}
         >
-          <h3 style={{ marginTop: 0, marginBottom: 8 }}>
+          <h3 style={SECTION_TITLE_STYLE}>
             Riesgo clínico — Complicaciones de la diabetes
           </h3>
 
-          {loadingRisk && <p>Cargando riesgo clínico…</p>}
+          {loadingRisk && <p style={META_TEXT_STYLE}>Cargando riesgo clínico…</p>}
 
           {riskError && (
-            <p style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{riskError}</p>
+            <p style={{ color: "#b91c1c", fontSize: "0.85rem", margin: 0 }}>
+              {riskError}
+            </p>
           )}
 
           {!loadingRisk && !riskError && !clinicalRisk && (
-            <p style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+            <p style={META_TEXT_STYLE}>
               No hay datos suficientes para calcular el riesgo clínico.
             </p>
           )}
@@ -428,50 +476,57 @@ export default function PatientDetailPage({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-                  gap: 12,
-                  marginBottom: 12,
-                  fontSize: "0.85rem",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 14,
+                  marginBottom: 14,
                 }}
               >
                 <div>
-                  <div style={{ marginBottom: 4 }}>Retinopatía</div>
+                  <div style={{ marginBottom: 6, fontSize: "0.84rem", color: "#475569" }}>
+                    Retinopatía
+                  </div>
                   <span style={riskBadgeStyle(clinicalRisk.retinopathyRisk)}>
                     {riskLabel(clinicalRisk.retinopathyRisk)}
                   </span>
                 </div>
 
                 <div>
-                  <div style={{ marginBottom: 4 }}>Riesgo renal</div>
+                  <div style={{ marginBottom: 6, fontSize: "0.84rem", color: "#475569" }}>
+                    Riesgo renal
+                  </div>
                   <span style={riskBadgeStyle(clinicalRisk.renalRisk)}>
                     {riskLabel(clinicalRisk.renalRisk)}
                   </span>
                 </div>
 
                 <div>
-                  <div style={{ marginBottom: 4 }}>Riesgo macrovascular</div>
+                  <div style={{ marginBottom: 6, fontSize: "0.84rem", color: "#475569" }}>
+                    Riesgo macrovascular
+                  </div>
                   <span style={riskBadgeStyle(clinicalRisk.macrovascularRisk)}>
                     {riskLabel(clinicalRisk.macrovascularRisk)}
                   </span>
                 </div>
 
                 <div>
-                  <div style={{ marginBottom: 4 }}>Riesgo neuropático</div>
+                  <div style={{ marginBottom: 6, fontSize: "0.84rem", color: "#475569" }}>
+                    Riesgo neuropático
+                  </div>
                   <span style={riskBadgeStyle(clinicalRisk.neuropathyRisk)}>
                     {riskLabel(clinicalRisk.neuropathyRisk)}
                   </span>
                 </div>
               </div>
 
-              {/* Últimos valores relevantes */}
               <div
                 style={{
-                  marginTop: 8,
-                  fontSize: "0.8rem",
-                  color: "#6b7280",
+                  paddingTop: 12,
+                  borderTop: "1px solid #eef2f7",
+                  fontSize: "0.82rem",
+                  color: "#64748b",
                   display: "flex",
                   flexWrap: "wrap",
-                  gap: 12,
+                  gap: 14,
                 }}
               >
                 {clinicalRisk.lastValues?.hba1c && (
@@ -503,8 +558,7 @@ export default function PatientDetailPage({
                 )}
                 {clinicalRisk.lastValues?.bmi && (
                   <div>
-                    <strong>IMC:</strong>{" "}
-                    {clinicalRisk.lastValues.bmi.valueNumeric}
+                    <strong>IMC:</strong> {clinicalRisk.lastValues.bmi.valueNumeric}
                   </div>
                 )}
               </div>
@@ -512,25 +566,45 @@ export default function PatientDetailPage({
           )}
         </div>
 
-        {/* ================= TRATAMIENTO FARMACOLÓGICO ================= */}
         <div
           style={{
-            background: "#ffffff",
-            borderRadius: 12,
-            padding: 16,
+            ...CARD_STYLE,
             marginBottom: 16,
-            boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
           }}
         >
-          <h3 style={{ marginTop: 0, marginBottom: 8 }}>
-            Tratamiento farmacológico actual
-          </h3>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 12,
+            }}
+          >
+            <div>
+              <h3 style={{ ...SECTION_TITLE_STYLE, marginBottom: 4 }}>
+                Tratamiento farmacológico actual
+              </h3>
+              <p style={META_TEXT_STYLE}>
+                Medicación activa registrada para seguimiento operativo.
+              </p>
+            </div>
 
-          {loadingMeds && <p>Cargando medicación…</p>}
-          {medError && <p style={{ color: "#b91c1c" }}>{medError}</p>}
+            <button
+              type="button"
+              onClick={() => setShowAddMedicationModal(true)}
+              style={PRIMARY_BUTTON_STYLE}
+            >
+              Agregar medicación
+            </button>
+          </div>
+
+          {loadingMeds && <p style={META_TEXT_STYLE}>Cargando medicación…</p>}
+          {medError && <p style={{ color: "#b91c1c", margin: 0 }}>{medError}</p>}
 
           {!loadingMeds && medications.length === 0 && !medError && (
-            <p style={{ color: "#666" }}>
+            <p style={META_TEXT_STYLE}>
               No hay tratamientos farmacológicos cargados.
             </p>
           )}
@@ -541,40 +615,59 @@ export default function PatientDetailPage({
                 style={{
                   width: "100%",
                   borderCollapse: "collapse",
-                  fontSize: "0.85rem",
+                  tableLayout: "fixed",
                 }}
               >
+                <colgroup>
+                  <col style={{ width: "28%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "18%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "8%" }} />
+                  <col style={{ width: "12%" }} />
+                </colgroup>
+
                 <thead>
-                  <tr
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #e5e7eb",
-                    }}
-                  >
-                    <th style={{ padding: 6 }}>Medicamento</th>
-                    <th style={{ padding: 6 }}>Tipo</th>
-                    <th style={{ padding: 6 }}>Dosis</th>
-                    <th style={{ padding: 6 }}>Frecuencia</th>
-                    <th style={{ padding: 6 }}>Inicio</th>
-                    <th style={{ padding: 6 }}>Fin</th>
-                    <th style={{ padding: 6 }}>Estado</th>
+                  <tr>
+                    <th style={TABLE_HEADER_CELL_STYLE}>Medicamento</th>
+                    <th style={TABLE_HEADER_CELL_STYLE}>Tipo</th>
+                    <th style={TABLE_HEADER_CELL_STYLE}>Dosis</th>
+                    <th style={TABLE_HEADER_CELL_STYLE}>Frecuencia</th>
+                    <th style={TABLE_HEADER_CELL_STYLE}>Inicio</th>
+                    <th style={TABLE_HEADER_CELL_STYLE}>Fin</th>
+                    <th style={TABLE_HEADER_CELL_STYLE}>Estado</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {medications.map((m) => (
                     <tr key={m.id}>
-                      <td style={{ padding: 6 }}>
+                      <td
+                        style={{
+                          ...TABLE_BODY_CELL_STYLE,
+                          fontWeight: 500,
+                          wordBreak: "break-word",
+                        }}
+                      >
                         {m.medicationName} ({m.medicationCode})
                       </td>
-                      <td style={{ padding: 6 }}>
+                      <td style={TABLE_BODY_CELL_STYLE}>
                         {m.type === "CRONICO" ? "Crónico" : "Ocasional"}
                       </td>
-                      <td style={{ padding: 6 }}>{m.dose}</td>
-                      <td style={{ padding: 6 }}>{m.frequency}</td>
-                      <td style={{ padding: 6 }}>{formatDate(m.startDate)}</td>
-                      <td style={{ padding: 6 }}>{formatDate(m.endDate)}</td>
-                      <td style={{ padding: 6 }}>
+                      <td style={{ ...TABLE_BODY_CELL_STYLE, whiteSpace: "nowrap" }}>
+                        {m.dose}
+                      </td>
+                      <td style={{ ...TABLE_BODY_CELL_STYLE, wordBreak: "break-word" }}>
+                        {m.frequency}
+                      </td>
+                      <td style={{ ...TABLE_BODY_CELL_STYLE, whiteSpace: "nowrap" }}>
+                        {formatDate(m.startDate)}
+                      </td>
+                      <td style={{ ...TABLE_BODY_CELL_STYLE, whiteSpace: "nowrap" }}>
+                        {formatDate(m.endDate)}
+                      </td>
+                      <td style={TABLE_BODY_CELL_STYLE}>
                         {m.isActive ? "Activo" : "Finalizado"}
                       </td>
                     </tr>
@@ -583,117 +676,136 @@ export default function PatientDetailPage({
               </table>
             </div>
           )}
-
-          {/* Botón agregar medicación */}
-          <button
-            type="button"
-            onClick={() => setShowAddMedicationModal(true)}
-            style={{
-              marginTop: 12,
-              padding: "6px 14px",
-              borderRadius: 8,
-              border: "1px solid #2563eb",
-              background: "#2563eb",
-              color: "#ffffff",
-              cursor: "pointer",
-              fontSize: "0.85rem",
-            }}
-          >
-            [+] Agregar medicación
-          </button>
         </div>
 
-        {/* ================= PERFIL FARMACOLÓGICO ================= */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: 12,
-            padding: 16,
-            boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-          }}
-        >
-          <h3 style={{ marginTop: 0, marginBottom: 8 }}>
-            Perfil farmacológico (resumen últimos 12 meses)
-          </h3>
+        <div style={CARD_STYLE}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 12,
+            }}
+          >
+            <div>
+              <h3 style={{ ...SECTION_TITLE_STYLE, marginBottom: 4 }}>
+                Perfil farmacológico (resumen últimos 12 meses)
+              </h3>
+              <p style={META_TEXT_STYLE}>
+                Dispensas, continuidad y señales operativas del tratamiento.
+              </p>
+            </div>
 
-          {loadingPharma && <p>Cargando perfil farmacológico…</p>}
+            <button
+              type="button"
+              onClick={() => onOpenPharmaDetail(patient)}
+              style={PRIMARY_BUTTON_STYLE}
+            >
+              Ver detalle farmacológico completo
+            </button>
+          </div>
+
+          {loadingPharma && <p style={META_TEXT_STYLE}>Cargando perfil farmacológico…</p>}
+
           {pharmaError && (
-            <p style={{ color: "#b91c1c", fontSize: "0.8rem" }}>
+            <p style={{ color: "#b91c1c", fontSize: "0.85rem", margin: 0 }}>
               {pharmaError}
             </p>
           )}
 
-          {!loadingPharma &&
-            !pharmaError &&
-            pharmaSummary.totalDrugs === 0 && (
-              <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
-                No se registran dispensas de medicamentos en la ventana
-                analizada.
-              </p>
-            )}
+          {!loadingPharma && !pharmaError && pharmaSummary.totalDrugs === 0 && (
+            <p style={META_TEXT_STYLE}>
+              No se registran dispensas de medicamentos en la ventana analizada.
+            </p>
+          )}
 
-          {!loadingPharma &&
-            !pharmaError &&
-            pharmaSummary.totalDrugs > 0 && (
+          {!loadingPharma && !pharmaError && pharmaSummary.totalDrugs > 0 && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 12,
+              }}
+            >
               <div
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 16,
-                  marginBottom: 12,
-                  fontSize: "0.9rem",
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#f8fafc",
+                  border: "1px solid #e5e7eb",
                 }}
               >
-                <div>
-                  <strong>Total de medicamentos:</strong>{" "}
+                <div style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 4 }}>
+                  Total de medicamentos
+                </div>
+                <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#111827" }}>
                   {pharmaSummary.totalDrugs}
                 </div>
+              </div>
 
-                <div>
-                  <strong>Crónicos:</strong> {pharmaSummary.chronicDrugs}
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#f8fafc",
+                  border: "1px solid #e5e7eb",
+                }}
+              >
+                <div style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 4 }}>
+                  Crónicos
                 </div>
+                <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#111827" }}>
+                  {pharmaSummary.chronicDrugs}
+                </div>
+              </div>
 
-                <div>
-                  <strong>Última dispensa registrada:</strong>{" "}
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#f8fafc",
+                  border: "1px solid #e5e7eb",
+                }}
+              >
+                <div style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: 4 }}>
+                  Última dispensa registrada
+                </div>
+                <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#111827" }}>
                   {pharmaSummary.lastDispenseLabel}
                 </div>
-
-                {pharmaSummary.anyLowAdherence && (
-                  <div style={{ color: "#92400e" }}>
-                    ⚠ Al menos un medicamento con baja adherencia (&lt; 60%).
-                  </div>
-                )}
               </div>
-            )}
 
-          <button
-            type="button"
-            onClick={() => onOpenPharmaDetail(patient)}
-            style={{
-              marginTop: 4,
-              padding: "6px 14px",
-              borderRadius: 999,
-              border: "1px solid #2563eb",
-              background: "#2563eb",
-              color: "#ffffff",
-              cursor: "pointer",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-            }}
-          >
-            Ver detalle farmacológico completo
-          </button>
+              {pharmaSummary.anyLowAdherence && (
+                <div
+                  style={{
+                    padding: 14,
+                    borderRadius: 12,
+                    background: "#fff7ed",
+                    border: "1px solid #fed7aa",
+                  }}
+                >
+                  <div style={{ fontSize: "0.8rem", color: "#9a3412", marginBottom: 4 }}>
+                    Señal operativa
+                  </div>
+                  <div style={{ fontSize: "0.92rem", fontWeight: 600, color: "#9a3412" }}>
+                    Al menos un medicamento con baja adherencia (&lt; 60%).
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ================= MODAL: AGREGAR MEDICACIÓN ================= */}
       {showAddMedicationModal && (
         <AddMedicationModal
           patientId={patient.id}
           onClose={() => setShowAddMedicationModal(false)}
           onSuccess={() => {
             setShowAddMedicationModal(false);
-            reloadMedications(); // refrescamos lista
+            reloadMedications();
           }}
         />
       )}

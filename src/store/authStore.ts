@@ -1,8 +1,60 @@
 // integrad-dashboard/src/store/authStore.ts
-// Store mínimo de autenticación para IntegraD Dashboard
+// Store mínimo de autenticación para IntegraD Dashboard.
 // Maneja el token JWT en localStorage y helpers de lectura.
 
 const TOKEN_KEY = "integrad_auth_token";
+const LEGACY_TOKEN_KEYS = ["auth_token", "token", "userToken"] as const;
+
+function cleanupLegacyTokenKeys(): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    for (const legacyKey of LEGACY_TOKEN_KEYS) {
+      window.localStorage.removeItem(legacyKey);
+    }
+  } catch {
+    // noop
+  }
+}
+
+function readFirstLegacyToken(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    for (const legacyKey of LEGACY_TOKEN_KEYS) {
+      const token = window.localStorage.getItem(legacyKey);
+      if (token) return token;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function migrateLegacyTokenIfNeeded(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const currentToken = window.localStorage.getItem(TOKEN_KEY);
+    if (currentToken) {
+      cleanupLegacyTokenKeys();
+      return currentToken;
+    }
+
+    const legacyToken = readFirstLegacyToken();
+    if (!legacyToken) {
+      cleanupLegacyTokenKeys();
+      return null;
+    }
+
+    window.localStorage.setItem(TOKEN_KEY, legacyToken);
+    cleanupLegacyTokenKeys();
+    return legacyToken;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Obtiene el token JWT almacenado.
@@ -12,10 +64,9 @@ export function getAuthToken(): string | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const token = window.localStorage.getItem(TOKEN_KEY);
+    const token = migrateLegacyTokenIfNeeded();
     return token || null;
-  } catch (err) {
-    console.warn("[authStore] No se pudo leer el token desde localStorage:", err);
+  } catch {
     return null;
   }
 }
@@ -28,16 +79,17 @@ export function setAuthToken(token: string | null): void {
   if (typeof window === "undefined") return;
 
   try {
+    cleanupLegacyTokenKeys();
+
     if (token) {
       window.localStorage.setItem(TOKEN_KEY, token);
     } else {
       window.localStorage.removeItem(TOKEN_KEY);
     }
 
-    // Notificación opcional para quien quiera reaccionar a cambios de auth
     notifyAuthChange(token);
-  } catch (err) {
-    console.warn("[authStore] No se pudo escribir el token en localStorage:", err);
+  } catch {
+    // noop
   }
 }
 
@@ -45,7 +97,23 @@ export function setAuthToken(token: string | null): void {
  * Elimina explícitamente el token (por ejemplo, en logout).
  */
 export function clearAuthToken(): void {
-  setAuthToken(null);
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+    cleanupLegacyTokenKeys();
+    notifyAuthChange(null);
+  } catch {
+    // noop
+  }
+}
+
+/**
+ * Ejecuta inicialización defensiva del store al iniciar la app.
+ * Migra tokens legacy al token oficial si fuese necesario.
+ */
+export function initializeAuthStore(): void {
+  migrateLegacyTokenIfNeeded();
 }
 
 /**
@@ -56,7 +124,7 @@ export function isAuthenticated(): boolean {
 }
 
 /* ------------------------------------------------------------------ */
-/* Extras (UI/Diagnóstico)                                             */
+/* Extras (UI/Diagnóstico)                                            */
 /* ------------------------------------------------------------------ */
 
 export type JwtPayloadLite = {
@@ -78,7 +146,10 @@ export function decodeJwtPayload(token: string): JwtPayloadLite | null {
 
     const base64Url = parts[1];
     const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "=",
+    );
 
     const json = atob(padded);
     return JSON.parse(json) as JwtPayloadLite;
@@ -97,7 +168,7 @@ export function getSessionInfo(): JwtPayloadLite | null {
 }
 
 /* ------------------------------------------------------------------ */
-/* Suscripción a cambios (opcional)                                    */
+/* Suscripción a cambios (opcional)                                   */
 /* ------------------------------------------------------------------ */
 
 type AuthChangeListener = (token: string | null) => void;
@@ -112,8 +183,8 @@ function notifyAuthChange(token: string | null) {
   for (const fn of listeners) {
     try {
       fn(token);
-    } catch (e) {
-      console.warn("[authStore] listener error:", e);
+    } catch {
+      // noop
     }
   }
 }

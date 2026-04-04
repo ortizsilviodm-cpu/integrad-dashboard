@@ -11,7 +11,6 @@ import {
   type PatientPharmaProfile,
 } from "../api/pharmaProfile";
 
-// 🧩 Componentes modulares de perfil farmacológico
 import PharmaHeader from "../components/patientPharma/PharmaHeader";
 import PharmaMedicationsTable from "../components/patientPharma/PharmaMedicationsTable";
 import PharmaDispenseSummary from "../components/patientPharma/PharmaDispenseSummary";
@@ -20,7 +19,6 @@ import PharmaDrugsTable from "../components/patientPharma/PharmaDrugsTable";
 import PharmaFamiliesTable from "../components/patientPharma/PharmaFamiliesTable";
 import PharmaAdherenceBars from "../components/patientPharma/PharmaAdherenceBars";
 
-// Tipos auxiliares para familias terapéuticas
 import type { DrugFamilySummary } from "../components/patientPharma/types";
 
 interface PatientPharmaFullPageProps {
@@ -30,34 +28,20 @@ interface PatientPharmaFullPageProps {
 
 /**
  * Vista completa del Perfil Farmacológico del Paciente.
- * Ocupa casi toda la pantalla dentro de la sección Pacientes.
+ * Se renderiza dentro de un contenedor flotante externo.
  */
 export default function PatientPharmaFullPage({
   patient,
   onClose,
 }: PatientPharmaFullPageProps) {
-  // Perfil farmacológico basado en DISPENSAS
   const [pharma, setPharma] = useState<PatientPharmaProfile | null>(null);
   const [loadingPharma, setLoadingPharma] = useState<boolean>(false);
   const [pharmaError, setPharmaError] = useState<string | null>(null);
 
-  // Tratamiento farmacológico ACTUAL (prescripción registrada)
   const [medications, setMedications] = useState<PatientMedicationRow[]>([]);
   const [loadingMeds, setLoadingMeds] = useState<boolean>(false);
   const [medsError, setMedsError] = useState<string | null>(null);
 
-  // Bloquear scroll del body mientras está abierta la vista completa
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
-
-  /* -------------------------------------------------------
-   * 1) PERFIL FARMACOLÓGICO (dispensas)
-   * -------------------------------------------------------*/
   useEffect(() => {
     if (!patient?.id) return;
 
@@ -66,16 +50,12 @@ export default function PatientPharmaFullPage({
 
     fetchPharmaProfile(patient.id, 365)
       .then((data) => setPharma(data))
-      .catch((err) => {
-        console.error("Error al obtener perfil farmacológico (full view):", err);
+      .catch(() => {
         setPharmaError("No se pudo cargar el perfil farmacológico.");
       })
       .finally(() => setLoadingPharma(false));
   }, [patient?.id]);
 
-  /* -------------------------------------------------------
-   * 2) MEDICACIÓN ACTUAL (prescripción)
-   * -------------------------------------------------------*/
   useEffect(() => {
     if (!patient?.id) return;
 
@@ -94,9 +74,8 @@ export default function PatientPharmaFullPage({
           );
         }
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
-        console.error("Error medicación indicada del paciente:", err);
         setMedsError("No se pudo cargar la medicación del paciente.");
       })
       .finally(() => {
@@ -108,10 +87,6 @@ export default function PatientPharmaFullPage({
     };
   }, [patient?.id]);
 
-  /* -------------------------------------------------------
-   * Helpers
-   * -------------------------------------------------------*/
-
   const formatDate = (value?: string | null) => {
     if (!value) return "—";
     const d = new Date(value);
@@ -119,7 +94,6 @@ export default function PatientPharmaFullPage({
     return d.toLocaleDateString("es-AR");
   };
 
-  // Chip reutilizable para “Crónico / Ocasional”
   const renderChronicChip = (chronic: boolean) => (
     <span
       style={{
@@ -137,11 +111,9 @@ export default function PatientPharmaFullPage({
     </span>
   );
 
-  // Para la medicación indicada (usa el mismo estilo que el chip crónico)
   const renderMedicationTypeChip = (type: "CRONICO" | "OCASIONAL") =>
     renderChronicChip(type === "CRONICO");
 
-  // Clasificación simplificada por familia terapéutica
   const getDrugFamily = (drugName: string, drugCode: string | null) => {
     const name = (drugName || "").toLowerCase();
     const code = (drugCode || "").toLowerCase();
@@ -213,34 +185,21 @@ export default function PatientPharmaFullPage({
   const families: DrugFamilySummary[] =
     pharma && pharma.drugs.length > 0 ? buildFamiliesSummary(pharma.drugs) : [];
 
-  /* -------------------------------------------------------
-   * Render
-   * -------------------------------------------------------*/
-
   return (
-    <div
+    <section
       style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "#f3f4f6",
-        zIndex: 10000,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden", // evita scroll extra en el overlay raíz
+        width: "100%",
+        boxSizing: "border-box",
       }}
     >
-      {/* Barra superior */}
       <PharmaHeader patient={patient} onClose={onClose} />
 
-      {/* Contenido scrollable */}
       <main
         style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "0.75rem 1.5rem 0.75rem 1.5rem",
+          padding: "0.75rem 1.25rem 1rem 1.25rem",
+          boxSizing: "border-box",
         }}
       >
-        {/* 1) Tratamiento indicado (medicación registrada) */}
         <PharmaMedicationsTable
           medications={medications}
           loading={loadingMeds}
@@ -249,7 +208,6 @@ export default function PatientPharmaFullPage({
           renderMedicationTypeChip={renderMedicationTypeChip}
         />
 
-        {/* 2) Resumen de medicación + badges de tratamientos activos */}
         <PharmaDispenseSummary
           pharma={pharma}
           loading={loadingPharma}
@@ -262,27 +220,24 @@ export default function PatientPharmaFullPage({
           error={pharmaError}
         />
 
-        {/* 3) Detalle por medicamento */}
         <PharmaDrugsTable
           drugs={pharma?.drugs}
           loading={loadingPharma}
           error={pharmaError}
         />
 
-        {/* 4) Resumen por familia terapéutica */}
         <PharmaFamiliesTable
           families={families}
           loading={loadingPharma}
           error={pharmaError}
         />
 
-        {/* 5) Barras de adherencia por medicamento */}
         <PharmaAdherenceBars
           pharma={pharma}
           loading={loadingPharma}
           error={pharmaError}
         />
       </main>
-    </div>
+    </section>
   );
 }

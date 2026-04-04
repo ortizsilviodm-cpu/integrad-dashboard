@@ -17,39 +17,31 @@ export default function PatientsPage() {
   const [search, setSearch] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  // 🔁 Estado de paginación basada en cursor (backend)
   const [cursor, setCursor] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasNext, setHasNext] = useState<boolean>(false);
 
-  // Pila de cursores anteriores para poder navegar hacia atrás
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([]);
 
-  // Paciente seleccionado (para modal resumen)
   const [selectedPatient, setSelectedPatient] = useState<PatientRow | null>(
     null
   );
 
-  // Paciente seleccionado para vista farmacológica completa
   const [pharmaDetailPatient, setPharmaDetailPatient] =
     useState<PatientRow | null>(null);
 
-  // Paciente seleccionado para ficha clínica completa (visión 360°)
   const [clinicalDetailPatient, setClinicalDetailPatient] =
     useState<PatientRow | null>(null);
 
-  // Filtro de enrolamiento
   const [enrollmentFilter, setEnrollmentFilter] = useState<
     "all" | "enrolled" | "not_enrolled"
   >("all");
 
   const normalizedSearch = search.trim().toLowerCase();
 
-  // 🔍 Búsqueda + filtro de enrolamiento sobre la página actual
   const filteredPatients = useMemo(
     () =>
       patients.filter((p) => {
-        // filtro por texto
         if (
           normalizedSearch &&
           !(
@@ -60,7 +52,6 @@ export default function PatientsPage() {
           return false;
         }
 
-        // filtro por enrolamiento
         if (enrollmentFilter === "enrolled" && !p.enrolled) return false;
         if (enrollmentFilter === "not_enrolled" && p.enrolled) return false;
 
@@ -71,17 +62,12 @@ export default function PatientsPage() {
 
   const totalFilteredCount = filteredPatients.length;
 
-  // Como usamos paginación por cursor, no conocemos el total de páginas.
-  // Usamos una aproximación: página actual + 1 si hay siguiente.
   const totalPages = Math.max(1, currentPage + (hasNext ? 1 : 0));
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
   };
 
-  /**
-   * Carga una página desde el backend usando cursor y PAGE_SIZE.
-   */
   const loadPage = (cursorToUse: string | null) => {
     setLoading(true);
     setError(null);
@@ -116,13 +102,9 @@ export default function PatientsPage() {
       });
   };
 
-  /**
-   * Maneja los cambios de página que dispara PatientsView.
-   */
   const handlePageChange = (page: number) => {
     if (page === currentPage) return;
 
-    // Ir hacia adelante (Siguiente)
     if (page > currentPage) {
       if (!hasNext || !nextCursor) return;
 
@@ -133,7 +115,6 @@ export default function PatientsPage() {
       return;
     }
 
-    // Ir hacia atrás (Anterior)
     if (page < currentPage) {
       if (cursorStack.length === 0) return;
 
@@ -146,7 +127,6 @@ export default function PatientsPage() {
     }
   };
 
-  // Carga inicial
   useEffect(() => {
     setCursorStack([]);
     setCurrentPage(1);
@@ -154,25 +134,22 @@ export default function PatientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Si cambiamos de página, cerramos el modal
   useEffect(() => {
     setSelectedPatient(null);
   }, [currentPage]);
 
   const handleCloseDetail = () => setSelectedPatient(null);
 
-  // Abrir vista farmacológica completa desde el modal
   const handleOpenPharmaDetail = (patient: PatientRow) => {
-    setSelectedPatient(null); // cerramos la ficha rápida
-    setClinicalDetailPatient(null); // aseguramos que no haya ficha clínica abierta
-    setPharmaDetailPatient(patient); // abrimos la vista farmacológica completa
+    setSelectedPatient(null);
+    setClinicalDetailPatient(null);
+    setPharmaDetailPatient(patient);
   };
 
-  // Abrir ficha clínica completa (visión 360°)
   const handleOpenClinicalDetail = (patient: PatientRow) => {
-    setSelectedPatient(null); // cerramos la ficha rápida
-    setPharmaDetailPatient(null); // cerramos la farmacológica si estaba abierta
-    setClinicalDetailPatient(patient); // abrimos la ficha clínica completa
+    setSelectedPatient(null);
+    setPharmaDetailPatient(null);
+    setClinicalDetailPatient(patient);
   };
 
   const handleClosePharmaDetail = () => {
@@ -185,7 +162,6 @@ export default function PatientsPage() {
 
   return (
     <>
-      {/* Contenido principal (lista + modales estándar) */}
       <PatientsView
         loading={loading}
         error={error}
@@ -201,7 +177,6 @@ export default function PatientsPage() {
         onEnrollmentFilterChange={setEnrollmentFilter}
       />
 
-      {/* Modal con ficha rápida del paciente */}
       {selectedPatient && (
         <PatientDetailPage
           patient={selectedPatient}
@@ -211,39 +186,68 @@ export default function PatientsPage() {
         />
       )}
 
-      {/* Vista farmacológica completa (ya maneja su propio overlay) */}
       {pharmaDetailPatient && (
-        <PatientPharmaFullPage
-          patient={pharmaDetailPatient}
-          onClose={handleClosePharmaDetail}
-        />
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15,23,42,0.40)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: "24px 20px",
+            zIndex: 9998,
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              width: "min(1360px, 100%)",
+              maxHeight: "92vh",
+              overflowY: "auto",
+              overflowX: "hidden",
+              background: "#f9fafb",
+              borderRadius: 18,
+              boxShadow: "0 15px 45px rgba(15,23,42,0.35)",
+              boxSizing: "border-box",
+            }}
+          >
+            <PatientPharmaFullPage
+              patient={pharmaDetailPatient}
+              onClose={handleClosePharmaDetail}
+            />
+          </div>
+        </div>
       )}
 
-      {/* 🆕 Ficha clínica completa en overlay con blur */}
       {clinicalDetailPatient && (
         <div
           style={{
             position: "fixed",
             inset: 0,
-            backgroundColor: "rgba(15,23,42,0.40)", // sombra suave
+            backgroundColor: "rgba(15,23,42,0.40)",
             backdropFilter: "blur(12px)",
             WebkitBackdropFilter: "blur(12px)",
             display: "flex",
             justifyContent: "center",
             alignItems: "flex-start",
-            padding: "40px 24px",
+            padding: "24px 20px",
             zIndex: 9998,
+            boxSizing: "border-box",
           }}
         >
           <div
             style={{
-              maxWidth: 1200,
-              width: "100%",
-              maxHeight: "90vh",
+              width: "min(1520px, 100%)",
+              maxHeight: "92vh",
               overflowY: "auto",
+              overflowX: "hidden",
               background: "#f9fafb",
               borderRadius: 16,
               boxShadow: "0 15px 45px rgba(15,23,42,0.35)",
+              boxSizing: "border-box",
             }}
           >
             <PatientClinicalFullPage

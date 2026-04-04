@@ -53,10 +53,12 @@ const AlertsDonutChart: React.FC<AlertsDonutChartProps> = ({ data }) => {
           ))}
         </Pie>
         <Tooltip
-          formatter={(value: number, name: string) => [
-            `${value} alertas`,
-            name,
-          ]}
+          formatter={(value, name) => {
+            const safeValue = typeof value === "number" ? value : 0;
+            const safeName = typeof name === "string" ? name : "Serie";
+
+            return [`${safeValue} alertas`, safeName];
+          }}
         />
         <Legend
           verticalAlign="bottom"

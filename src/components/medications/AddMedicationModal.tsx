@@ -1,4 +1,4 @@
-// integrad-dashboard/src/components/medications/AddMedicationModal.tsx
+/* integrad-dashboard/src/components/medications/AddMedicationModal.tsx */
 
 import { useState } from "react";
 import { API_URL } from "../../config/api";
@@ -7,8 +7,35 @@ import { safeFetch } from "../../api/safeFetch";
 export interface AddMedicationModalProps {
   patientId: string;
   onClose: () => void;
-  onSuccess: () => void; // refresca la ficha
+  onSuccess: () => void;
 }
+
+const LABEL_STYLE: React.CSSProperties = {
+  display: "block",
+  marginBottom: 6,
+  fontSize: "0.8rem",
+  fontWeight: 600,
+  color: "#374151",
+};
+
+const INPUT_STYLE: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  minHeight: 38,
+  padding: "8px 10px",
+  border: "1px solid #d1d5db",
+  borderRadius: 10,
+  fontSize: "0.9rem",
+  color: "#111827",
+  background: "#ffffff",
+};
+
+const TEXTAREA_STYLE: React.CSSProperties = {
+  ...INPUT_STYLE,
+  minHeight: 88,
+  resize: "vertical",
+  fontFamily: "inherit",
+};
 
 export default function AddMedicationModal({
   patientId,
@@ -18,7 +45,6 @@ export default function AddMedicationModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Campos del formulario
   const [form, setForm] = useState({
     medicationCode: "",
     medicationName: "",
@@ -40,7 +66,6 @@ export default function AddMedicationModal({
   const handleSubmit = async () => {
     setError(null);
 
-    // Validación mínima
     if (!form.medicationCode.trim()) {
       setError("El código del medicamento es obligatorio.");
       return;
@@ -62,7 +87,6 @@ export default function AddMedicationModal({
 
     const endpoint = `${API_URL}/patients/${patientId}/medications`;
 
-    // 👇 Payload separado y serializado a JSON (para que type body sea válido)
     const payload = {
       medicationCode: form.medicationCode,
       medicationName: form.medicationName || undefined,
@@ -92,8 +116,8 @@ export default function AddMedicationModal({
       return;
     }
 
-    onSuccess(); // Actualizar vista padre
-    onClose(); // Cerrar modal
+    onSuccess();
+    onClose();
   };
 
   return (
@@ -114,56 +138,75 @@ export default function AddMedicationModal({
       <div
         style={{
           background: "#ffffff",
-          borderRadius: 16,
+          borderRadius: 18,
           padding: 24,
           width: "100%",
-          maxWidth: 560,
-          boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+          maxWidth: 720,
+          boxShadow: "0 16px 48px rgba(0,0,0,0.2)",
+          boxSizing: "border-box",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{ marginTop: 0, marginBottom: 12 }}>Agregar medicación</h2>
-        <p className="chart-subtitle" style={{ marginBottom: 16 }}>
-          Registrar un nuevo tratamiento farmacológico para el paciente.
-        </p>
+        <div style={{ marginBottom: 18 }}>
+          <h2
+            style={{
+              marginTop: 0,
+              marginBottom: 6,
+              fontSize: "1.35rem",
+              color: "#1f2937",
+            }}
+          >
+            Agregar medicación
+          </h2>
+          <p
+            className="chart-subtitle"
+            style={{
+              margin: 0,
+              fontSize: "0.9rem",
+              color: "#6b7280",
+              lineHeight: 1.45,
+            }}
+          >
+            Registrar un nuevo tratamiento farmacológico para el paciente.
+          </p>
+        </div>
 
-        {/* FORMULARIO */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 14,
             marginBottom: 16,
           }}
         >
           <div style={{ gridColumn: "1 / 3" }}>
-            <label>Código del medicamento</label>
+            <label style={LABEL_STYLE}>Código del medicamento</label>
             <input
               type="text"
               value={form.medicationCode}
               onChange={(e) =>
                 handleChange("medicationCode", e.target.value.toUpperCase())
               }
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div style={{ gridColumn: "1 / 3" }}>
-            <label>Nombre (opcional)</label>
+            <label style={LABEL_STYLE}>Nombre (opcional)</label>
             <input
               type="text"
               value={form.medicationName}
               onChange={(e) => handleChange("medicationName", e.target.value)}
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div>
-            <label>Tipo</label>
+            <label style={LABEL_STYLE}>Tipo</label>
             <select
               value={form.type}
               onChange={(e) => handleChange("type", e.target.value)}
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             >
               <option value="CRONICO">Crónico</option>
               <option value="OCASIONAL">Ocasional</option>
@@ -171,105 +214,125 @@ export default function AddMedicationModal({
           </div>
 
           <div>
-            <label>Vía</label>
+            <label style={LABEL_STYLE}>Vía</label>
             <input
               type="text"
               placeholder="oral / subcutánea / etc."
               value={form.route}
               onChange={(e) => handleChange("route", e.target.value)}
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div>
-            <label>Dosis</label>
+            <label style={LABEL_STYLE}>Dosis</label>
             <input
               type="text"
               placeholder="500 mg / 20 UI"
               value={form.dose}
               onChange={(e) => handleChange("dose", e.target.value)}
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div>
-            <label>Frecuencia</label>
+            <label style={LABEL_STYLE}>Frecuencia</label>
             <input
               type="text"
               placeholder="2 veces por día"
               value={form.frequency}
               onChange={(e) => handleChange("frequency", e.target.value)}
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div style={{ gridColumn: "1 / 3" }}>
-            <label>Patrón (opcional)</label>
+            <label style={LABEL_STYLE}>Patrón (opcional)</label>
             <input
               type="text"
               placeholder="mañana / noche"
               value={form.schedulePattern}
-              onChange={(e) =>
-                handleChange("schedulePattern", e.target.value)
-              }
-              style={{ width: "100%" }}
+              onChange={(e) => handleChange("schedulePattern", e.target.value)}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div>
-            <label>Fecha inicio</label>
+            <label style={LABEL_STYLE}>Fecha inicio</label>
             <input
               type="date"
               value={form.startDate}
               onChange={(e) => handleChange("startDate", e.target.value)}
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div>
-            <label>Fecha fin (opcional)</label>
+            <label style={LABEL_STYLE}>Fecha fin (opcional)</label>
             <input
               type="date"
               value={form.endDate}
               onChange={(e) => handleChange("endDate", e.target.value)}
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div style={{ gridColumn: "1 / 3" }}>
-            <label>Prescriptor (opcional)</label>
+            <label style={LABEL_STYLE}>Prescriptor (opcional)</label>
             <input
               type="text"
               value={form.prescriberName}
               onChange={(e) => handleChange("prescriberName", e.target.value)}
-              style={{ width: "100%" }}
+              style={INPUT_STYLE}
             />
           </div>
 
           <div style={{ gridColumn: "1 / 3" }}>
-            <label>Notas clínicas</label>
+            <label style={LABEL_STYLE}>Notas clínicas</label>
             <textarea
               value={form.notes}
               onChange={(e) => handleChange("notes", e.target.value)}
-              style={{ width: "100%", minHeight: 70 }}
+              style={TEXTAREA_STYLE}
             />
           </div>
         </div>
 
         {error && (
-          <p style={{ color: "#b91c1c", marginBottom: 12 }}>{error}</p>
+          <div
+            style={{
+              marginBottom: 14,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              color: "#b91c1c",
+              fontSize: "0.88rem",
+            }}
+          >
+            {error}
+          </div>
         )}
 
-        {/* ACCIONES */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 12,
+            marginTop: 4,
+          }}
+        >
           <button
             type="button"
             onClick={onClose}
             style={{
-              padding: "6px 14px",
+              minWidth: 96,
+              padding: "8px 16px",
               borderRadius: 999,
+              border: "1px solid #d1d5db",
               background: "#e5e7eb",
+              color: "#374151",
               cursor: "pointer",
+              fontWeight: 600,
             }}
           >
             Cancelar
@@ -280,10 +343,12 @@ export default function AddMedicationModal({
             onClick={handleSubmit}
             disabled={loading}
             style={{
-              padding: "6px 14px",
+              minWidth: 150,
+              padding: "8px 16px",
               borderRadius: 999,
+              border: "1px solid #2563eb",
               background: "#2563eb",
-              color: "#fff",
+              color: "#ffffff",
               cursor: "pointer",
               fontWeight: 600,
               opacity: loading ? 0.6 : 1,

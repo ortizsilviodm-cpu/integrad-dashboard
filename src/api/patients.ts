@@ -4,46 +4,20 @@ import { safeFetch } from "./safeFetch";
 import { API_URL } from "../config/api";
 
 /**
- * Fila cruda que viene del backend (/dashboard/followup-patients).
+ * =========================================================================
+ * LISTADO — Fuente de verdad: Prisma IntegraD DB (/patients)
+ * =========================================================================
+ *
+ * Motivo:
+ * - En local / demo, los pacientes Ana/Luis están en Prisma (seed).
+ * - El listado FHIR (/fhir/Patient) solo muestra recursos existentes en HAPI,
+ *   por eso en UI se veía "Juan Perez" pero no Ana/Luis.
+ *
+ * Estrategia:
+ * - Listado se arma desde GET /patients (backend IntegraD).
+ * - Soporta paginación por cursor (base64) igual que backend.
+ * - El resto de endpoints (summary/timeline/medications/etc) se mantiene.
  */
-interface PatientsApiRow {
-  patientId: string;
-  fullName: string;
-  documentNumber: string;
-  lastGlucoseValue: number | null;
-  lastGlucoseUnit: string | null;
-  lastGlucoseAt: string | null;
-  adherencePercent: number | null;
-  statusLabel: string;
-  openAlerts: number;
-
-  // Enrolamiento (puede venir completo o parcial según el backend)
-  enrolled?: boolean;
-  programType?: string | null;
-  programStatus?: string | null;
-  enrollmentDate?: string | null;
-  mainProvider?: string | null;
-}
-
-/**
- * Metadatos de paginación entregados por el backend.
- */
-interface PatientsApiMeta {
-  windowDays: number;
-  limit: number;
-  total?: number;
-  hasNext?: boolean;
-  hasPrev?: boolean;
-  nextCursor?: string;
-}
-
-/**
- * Respuesta esperada del backend.
- */
-interface PatientsApiResponse {
-  data: PatientsApiRow[];
-  meta?: PatientsApiMeta;
-}
 
 /**
  * Tipo que usa la tabla del dashboard.
@@ -81,79 +55,6 @@ export type FetchPatientsPageResult = {
   meta: PatientsPageMeta;
 };
 
-/**
- * Formato de glucemia reciente.
- */
-function formatLastGlucose(row: PatientsApiRow): string {
-  if (row.lastGlucoseValue == null || !row.lastGlucoseUnit) {
-    return "Sin datos recientes";
-  }
-
-  const base = `${row.lastGlucoseValue} ${row.lastGlucoseUnit}`;
-
-  if (!row.lastGlucoseAt) return base;
-
-  const d = new Date(row.lastGlucoseAt);
-  if (Number.isNaN(d.getTime())) return base;
-
-  const fecha = d.toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-  });
-
-  return `${base} • ${fecha}`;
-}
-
-/**
- * Formato de adherencia.
- */
-function formatAdherence(row: PatientsApiRow): string {
-  if (row.adherencePercent == null) return "—";
-  return `${row.adherencePercent.toFixed(0)} %`;
-}
-
-/**
- * Determina enrolled de forma robusta:
- * - Si backend manda `enrolled`, se respeta (fuente de verdad).
- * - Si no lo manda, inferimos desde programStatus.
- */
-function computeEnrolled(row: PatientsApiRow): boolean {
-  if (typeof row.enrolled === "boolean") return row.enrolled;
-
-  const status = (row.programStatus ?? "").toLowerCase().trim();
-
-  // Se aceptan variantes comunes
-  if (status === "active") return true;
-  if (status === "activo") return true;
-  if (status === "enrolled") return true;
-  if (status === "enrolado") return true;
-
-  return false;
-}
-
-/**
- * Mapea crudo → UI.
- */
-function mapApiRowToPatientRow(row: PatientsApiRow): PatientRow {
-  return {
-    id: row.patientId,
-    name: row.fullName || "Sin nombre",
-    document: row.documentNumber || "—",
-    lastGlucose: formatLastGlucose(row),
-    adherence: formatAdherence(row),
-    status: row.statusLabel || "En seguimiento",
-
-    enrolled: computeEnrolled(row),
-    programType: row.programType ?? null,
-    programStatus: row.programStatus ?? null,
-    enrollmentDate: row.enrollmentDate ?? null,
-    mainProvider: row.mainProvider ?? null,
-  };
-}
-
-/**
- * Meta default para errores.
- */
 function getDefaultMeta(): PatientsPageMeta {
   return {
     windowDays: null,
@@ -165,62 +66,103 @@ function getDefaultMeta(): PatientsPageMeta {
 }
 
 /**
- * Carga paginada desde /dashboard/followup-patients.
+ * Respuesta esperada desde backend IntegraD:
+ * GET /patients?limit=25&cursor=...
+ */
+type PatientsListApiRow = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName?: string;
+  documentId: string;
+  documentNumber?: string;
+  phone?: string | null;
+
+  enrolled: boolean;
+  programType: string | null;
+  programStatus: string | null;
+  enrollmentDate: string | null;
+  mainProvider: string | null;
+};
+
+type PatientsListApiResponse = {
+  data: PatientsListApiRow[];
+  meta: {
+    limit: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+    nextCursor?: string | null;
+  };
+};
+
+/**
+ * =========================================================================
+ * LISTADO (PRISMA REAL) — /patients
+ * =========================================================================
  */
 export async function fetchPatientsPage(params?: {
   limit?: number;
   cursor?: string | null;
 }): Promise<FetchPatientsPageResult> {
-  const { limit, cursor } = params ?? {};
+  const limit =
+    typeof params?.limit === "number" && params.limit > 0 ? params.limit : 25;
+  const cursor = params?.cursor ?? null;
 
-  const query = new URLSearchParams();
-  if (typeof limit === "number" && limit > 0) {
-    query.set("limit", String(limit));
-  }
-  if (cursor) {
-    query.set("cursor", cursor);
-  }
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  if (cursor) qs.set("cursor", cursor);
 
-  const qs = query.toString();
-  const endpoint = qs
-    ? `${API_URL}/dashboard/followup-patients?${qs}`
-    : `${API_URL}/dashboard/followup-patients`;
+  const endpoint = `${API_URL}/patients?${qs.toString()}`;
 
-  const result = await safeFetch<PatientsApiResponse>(endpoint);
+  const result = await safeFetch<PatientsListApiResponse>(endpoint);
 
-  if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
+  if (!result.ok || !result.data) {
     return {
       ok: false,
       data: [],
-      error:
-        result.error ??
-        "No se pudieron cargar los pacientes. Intente nuevamente.",
+      error: result.error ?? "No se pudieron cargar los pacientes.",
       meta: getDefaultMeta(),
     };
   }
 
-  try {
-    const apiRows = result.data.data;
-    const mapped = apiRows.map(mapApiRowToPatientRow);
+  const rows = Array.isArray(result.data.data) ? result.data.data : [];
 
-    const meta = result.data.meta;
-    const metaOut: PatientsPageMeta = {
-      windowDays: meta?.windowDays ?? null,
-      limit: meta?.limit ?? null,
-      hasNext: Boolean(meta?.hasNext),
-      hasPrev: Boolean(meta?.hasPrev),
-      nextCursor: meta?.nextCursor ?? null,
-    };
+  const mapped: PatientRow[] = rows.map((p) => ({
+    id: p.id,
+    name: p.fullName || `${p.firstName} ${p.lastName}`.trim() || "Sin nombre",
+    document: p.documentNumber || p.documentId || "—",
 
-    return { ok: true, data: mapped, error: null, meta: metaOut };
-  } catch (_err) {
-    return {
-      ok: false,
-      data: [],
-      error: "Error interno procesando los datos de pacientes.",
-      meta: getDefaultMeta(),
-    };
-  }
+    // MVP: estos campos pueden venir de otras fuentes en próximos sprints
+    lastGlucose: "Sin datos recientes",
+    adherence: "—",
+    status: "En seguimiento",
+
+    enrolled: Boolean(p.enrolled),
+    programType: p.programType ?? null,
+    programStatus: p.programStatus ?? null,
+    enrollmentDate: p.enrollmentDate ?? null,
+    mainProvider: p.mainProvider ?? null,
+  }));
+
+  const meta = result.data.meta ?? {
+    limit,
+    hasNext: false,
+    hasPrev: false,
+    nextCursor: null,
+  };
+
+  return {
+    ok: true,
+    data: mapped,
+    error: null,
+    meta: {
+      windowDays: null,
+      limit: meta.limit ?? limit,
+      hasNext: Boolean(meta.hasNext),
+      hasPrev: Boolean(meta.hasPrev),
+      nextCursor: meta.nextCursor ?? null,
+    },
+  };
 }
 
 /**
@@ -379,9 +321,7 @@ function mapSummaryApiToUi(payload: PatientSummaryApiResponse): PatientSummary {
   };
 }
 
-function mapTimelineApiToUi(
-  events: PatientTimelineEventApi[]
-): PatientTimelineItem[] {
+function mapTimelineApiToUi(events: PatientTimelineEventApi[]): PatientTimelineItem[] {
   return events
     .slice()
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -444,17 +384,14 @@ export async function fetchPatientTimeline(
     };
   }
 
-  const endpoint = `${API_URL}/patients/${encodeURIComponent(
-    patientId
-  )}/timeline`;
+  const endpoint = `${API_URL}/patients/${encodeURIComponent(patientId)}/timeline`;
   const result = await safeFetch<PatientTimelineApiResponse>(endpoint);
 
   if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
     return {
       ok: false,
       data: [],
-      error:
-        result.error ?? "No se pudo cargar el timeline. Intente nuevamente.",
+      error: result.error ?? "No se pudo cargar el timeline. Intente nuevamente.",
     };
   }
 
@@ -474,9 +411,6 @@ export async function fetchPatientTimeline(
  * API de Medicación del Paciente
  * =====================================================================*/
 
-/**
- * Fila de medicación del paciente (mapea 1:1 al backend)
- */
 export type PatientMedicationRow = {
   id: string;
   patientId: string;
@@ -507,9 +441,6 @@ export type FetchPatientMedicationsResult = {
   error: string | null;
 };
 
-/**
- * GET /patients/:id/medications
- */
 export async function fetchPatientMedications(
   patientId: string
 ): Promise<FetchPatientMedicationsResult> {
@@ -521,10 +452,7 @@ export async function fetchPatientMedications(
     };
   }
 
-  const endpoint = `${API_URL}/patients/${encodeURIComponent(
-    patientId
-  )}/medications`;
-
+  const endpoint = `${API_URL}/patients/${encodeURIComponent(patientId)}/medications`;
   const result = await safeFetch<{ data: PatientMedicationRow[] }>(endpoint);
 
   if (!result.ok || !result.data || !Array.isArray(result.data.data)) {
@@ -562,9 +490,6 @@ export type FetchPatientAdherenceResult = {
   error: string | null;
 };
 
-/**
- * GET /patients/:id/adherence?windowDays=90
- */
 export async function fetchPatientAdherence(
   patientId: string,
   windowDays: number = 90
@@ -580,10 +505,7 @@ export async function fetchPatientAdherence(
   const params = new URLSearchParams();
   params.set("windowDays", String(windowDays));
 
-  const endpoint = `${API_URL}/patients/${encodeURIComponent(
-    patientId
-  )}/adherence?${params.toString()}`;
-
+  const endpoint = `${API_URL}/patients/${encodeURIComponent(patientId)}/adherence?${params.toString()}`;
   const result = await safeFetch<PatientAdherenceApiResponse>(endpoint);
 
   if (!result.ok || !result.data) {
@@ -611,10 +533,6 @@ export type M5RiskLevel = "low" | "medium" | "high" | "critical";
 
 export type M5SuggestedActionPriority = "low" | "medium" | "high" | "critical";
 
-/**
- * Acciones sugeridas por IA.
- * Campos opcionales para tolerar evolución del backend.
- */
 export type M5SuggestedAction = {
   priority?: M5SuggestedActionPriority | string;
   title?: string;
@@ -675,13 +593,11 @@ function normalizeRiskSnapshot(
 ): PatientRiskSnapshot | null {
   if (!payload) return null;
 
-  // Caso A: { patientId, snapshot }
   const maybeObj = payload as { snapshot?: unknown };
   if (maybeObj.snapshot && typeof maybeObj.snapshot === "object") {
     return maybeObj.snapshot as PatientRiskSnapshot;
   }
 
-  // Caso B: snapshot directo
   if ((payload as any).patientId && (payload as any).riskScore != null) {
     return payload as PatientRiskSnapshot;
   }
@@ -689,10 +605,6 @@ function normalizeRiskSnapshot(
   return null;
 }
 
-/**
- * GET /patients/:id/risk
- * GET /patients/:id/risk?windowDays=90&modelVersion=m5_v1
- */
 export async function fetchPatientRiskSnapshot(params: {
   patientId: string;
   windowDays?: number;
@@ -732,15 +644,20 @@ export async function fetchPatientRiskSnapshot(params: {
   }
 
   const snapshot = normalizeRiskSnapshot(result.data);
-  if (!snapshot) {
+
+  if (snapshot === null) {
     return {
-      ok: false,
+      ok: true,
       data: null,
-      error: "Respuesta inválida del backend para snapshot de riesgo (M5).",
+      error: null,
     };
   }
 
-  return { ok: true, data: snapshot, error: null };
+  return {
+    ok: true,
+    data: snapshot,
+    error: null,
+  };
 }
 
 export type M5StatusResponse = {
@@ -756,9 +673,6 @@ export type FetchM5StatusResult = {
   error: string | null;
 };
 
-/**
- * GET /m5/status?windowDays=90&modelVersion=m5_v1
- */
 export async function fetchM5Status(params?: {
   windowDays?: number;
   modelVersion?: string;
@@ -782,7 +696,8 @@ export async function fetchM5Status(params?: {
       ok: false,
       data: null,
       error:
-        result.error ?? "No se pudo consultar el estado de M5. Intente nuevamente.",
+        result.error ??
+        "No se pudo consultar el estado de M5. Intente nuevamente.",
     };
   }
 

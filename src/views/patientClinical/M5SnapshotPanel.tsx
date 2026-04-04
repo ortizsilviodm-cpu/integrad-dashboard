@@ -29,7 +29,7 @@ function formatFlagLabel(key: string): string {
     case "needsClinicalReview":
       return "Revisión clínica";
     case "highPriorityCaseload":
-      return "Prioridad caseload";
+      return "Prioridad de seguimiento";
     default:
       return key;
   }
@@ -60,7 +60,7 @@ function flagPillStyle(flagKey: string) {
       };
     case "highPriorityCaseload":
       return {
-        label: "Prioridad caseload",
+        label: "Prioridad de seguimiento",
         bg: "#f3f4f6",
         color: "#111827",
         border: "1px solid #e5e7eb",
@@ -103,15 +103,41 @@ function signalChipStyle(isPresent: boolean) {
   };
 }
 
+function extractSignalAvailability(snapshot: PatientRiskSnapshot | null) {
+  const rawSignals = (snapshot as unknown as { signals?: unknown } | null)?.signals;
+
+  if (!rawSignals || typeof rawSignals !== "object") {
+    return {
+      hasReadings: false,
+      hasDispenses: false,
+      hasAlerts: false,
+    };
+  }
+
+  const signals = rawSignals as {
+    hasReadings?: unknown;
+    hasDispenses?: unknown;
+    hasAlerts?: unknown;
+  };
+
+  return {
+    hasReadings: Boolean(signals.hasReadings),
+    hasDispenses: Boolean(signals.hasDispenses),
+    hasAlerts: Boolean(signals.hasAlerts),
+  };
+}
+
+type M5SnapshotPanelProps = {
+  snapshot: PatientRiskSnapshot | null;
+  loading: boolean;
+  error: string | null;
+};
+
 export default function M5SnapshotPanel({
   snapshot,
   loading,
   error,
-}: {
-  snapshot: PatientRiskSnapshot | null;
-  loading: boolean;
-  error: string | null;
-}) {
+}: M5SnapshotPanelProps) {
   const badge = riskLevelLabel(snapshot?.riskLevel);
 
   const activeFlags = useMemo(() => {
@@ -120,6 +146,14 @@ export default function M5SnapshotPanel({
       .filter(([, v]) => Boolean(v))
       .map(([k]) => k);
   }, [snapshot]);
+
+  const { hasReadings, hasDispenses, hasAlerts } =
+    extractSignalAvailability(snapshot);
+
+  const isContactActionEnabled = true;
+  const isRequestReadingsEnabled = true;
+  const isClinicalReviewEnabled = true;
+  const isMarkPriorityEnabled = true;
 
   return (
     <div
@@ -152,8 +186,8 @@ export default function M5SnapshotPanel({
             M5 — Riesgo predictivo (IA)
           </h3>
           <p style={{ margin: 0, fontSize: "0.8rem", color: "#6b7280" }}>
-            Snapshot calculado para priorizar seguimiento (clínico, adherencia y
-            operativo).
+            Resumen calculado para priorizar el seguimiento clínico, de adherencia y
+            operativo.
           </p>
         </div>
 
@@ -162,7 +196,7 @@ export default function M5SnapshotPanel({
             ? "Cargando…"
             : snapshot?.generatedAt
             ? `Actualizado: ${formatIsoDateTime(snapshot.generatedAt)}`
-            : "Sin snapshot"}
+            : "Sin resumen"}
         </span>
       </div>
 
@@ -170,7 +204,7 @@ export default function M5SnapshotPanel({
 
       {!loading && !error && !snapshot && (
         <p style={{ color: "#6b7280", fontSize: "0.85rem" }}>
-          Aún no hay snapshot M5 disponible para este paciente.
+          Aún no hay un resumen M5 disponible para este paciente.
         </p>
       )}
 
@@ -183,7 +217,6 @@ export default function M5SnapshotPanel({
             marginTop: 10,
           }}
         >
-          {/* Columna izquierda */}
           <div
             style={{
               border: "1px solid #e5e7eb",
@@ -257,5 +290,141 @@ export default function M5SnapshotPanel({
             </div>
           </div>
 
-          {/* Columna derecha */}
           <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 14,
+              padding: 12,
+              background: "#ffffff",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                alignItems: "baseline",
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#111827" }}>
+                Calidad del resumen de seguimiento
+              </div>
+              <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+                Ventana: {snapshot.windowDays} días · Modelo: {snapshot.modelVersion}
+              </div>
+            </div>
+
+            <div style={{ fontSize: "0.8rem", color: "#6b7280", marginBottom: 6 }}>
+              Señales disponibles
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {[
+                { label: "Lecturas", present: hasReadings },
+                { label: "Dispensas", present: hasDispenses },
+                { label: "Alertas", present: hasAlerts },
+              ].map((s) => {
+                const style = signalChipStyle(s.present);
+                return (
+                  <div
+                    key={s.label}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: "0.78rem",
+                      background: style.bg,
+                      color: style.color,
+                      border: style.border,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {s.label}: {s.present ? "Sí" : "No"}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: "0.8rem", color: "#6b7280", marginBottom: 6 }}>
+              Señales operativas
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {activeFlags.length === 0 ? (
+                <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+                  Sin señales operativas activas.
+                </div>
+              ) : (
+                activeFlags.map((k) => {
+                  const p = flagPillStyle(k);
+                  return (
+                    <div
+                      key={k}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        fontSize: "0.78rem",
+                        background: p.bg,
+                        color: p.color,
+                        border: p.border,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {p.label}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "#111827" }}>
+              Acciones operativas
+            </div>
+            <div style={{ fontSize: "0.78rem", color: "#6b7280", marginTop: 4 }}>
+              Botones de apoyo para el equipo. Por el momento no ejecutan acciones reales;
+              se habilitarán cuando esté listo el sistema de tareas.
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+                marginTop: 10,
+              }}
+            >
+              <button style={secondaryButtonStyle(isContactActionEnabled)}>
+                Crear tarea de contacto
+              </button>
+              <button style={secondaryButtonStyle(isRequestReadingsEnabled)}>
+                Solicitar lecturas
+              </button>
+              <button style={secondaryButtonStyle(isClinicalReviewEnabled)}>
+                Derivar a revisión
+              </button>
+              <button style={secondaryButtonStyle(isMarkPriorityEnabled)}>
+                Marcar prioritario
+              </button>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <M5SuggestedActionsPanel snapshot={snapshot} />
+            </div>
+
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: "0.78rem",
+                color: "#6b7280",
+                borderTop: "1px solid #e5e7eb",
+                paddingTop: 10,
+              }}
+            >
+              Estado operativo para seguimiento
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

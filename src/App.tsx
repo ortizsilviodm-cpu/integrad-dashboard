@@ -1,11 +1,13 @@
 /* integrad-dashboard/src/App.tsx */
 
-import { useEffect, useState, createContext, useContext } from "react";
+import { useEffect, useMemo, useState, createContext, useContext } from "react";
 import "./App.css";
 
-// Global
-import { getAuthToken, isAuthenticated, onAuthChange } from "./store/authStore";
-import { logout, fetchMe, type MeResponse } from "./api/auth";
+//  NUEVO: Auth Keycloak (Sprint 53)
+import { useAuth as useKeycloakAuth } from "./auth/AuthProvider";
+
+// Theme
+import { TOKENS } from "./theme/tokens";
 
 // Components
 import Sidebar, { type SectionKey } from "./components/Sidebar";
@@ -23,6 +25,9 @@ import AmbulatoryPage from "./pages/AmbulatoryPage";
 import PatientEnrollmentPage from "./pages/PatientEnrollmentPage";
 import EnrollmentsPage from "./pages/EnrollmentsPage";
 import FollowupCaseloadPage from "./pages/FollowupCaseloadPage";
+import EducatorsPage from "./pages/EducatorsPage";
+import { ClinicalSignalsPage } from "./pages/ClinicalSignalsPage";
+import CaseloadPage from "./pages/CaseloadPage";
 
 // Views
 import SettingsView from "./views/SettingsView";
@@ -40,63 +45,76 @@ export interface User {
   specialty: string;
 }
 
-// Auth Context
+// ---------------------------------------------------------------------
+// Auth Context (compatibilidad interna del Dashboard)
+// ---------------------------------------------------------------------
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isReady: boolean;
-  login: (token: string) => void;
+  // login queda “noop” porque LoginPage dispara Keycloak directamente
+  login: (_token: string) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isAuthenticated: false,
-  isReady: false,
+  isReady: true,
   login: () => {},
   logout: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
 
-/**
- * /auth/me en backend puede devolver:
- * A) { id, email, role, ... }
- * B) { user: { id, email, role, ... }, patientId, appContext }
- */
-function normalizeMePayload(payload: unknown): MeResponse | null {
-  if (!payload || typeof payload !== "object") return null;
+// ---------------------------------------------------------------------
+// Helpers: leer info mínima desde el JWT (sin validar firma, solo UI)
+// ---------------------------------------------------------------------
+type JwtPayload = {
+  sub?: string;
+  name?: string;
+  preferred_username?: string;
+  email?: string;
+  realm_access?: { roles?: string[] };
+};
 
-  const p = payload as any;
-
-  if (p.user && typeof p.user === "object") {
-    const u = p.user as any;
-    if (!u?.id) return null;
-
-    // Si tu MeResponse incluye campos extra (appContext/patientId), los dejamos pasar si existen.
-    return {
-      ...u,
-      appContext: p.appContext,
-      patientId: p.patientId,
-    } as MeResponse;
-  }
-
-  if (p.id) return p as MeResponse;
-
-  return null;
+function base64UrlDecode(input: string): string {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = normalized.length % 4;
+  const padded = pad ? normalized + "=".repeat(4 - pad) : normalized;
+  return atob(padded);
 }
 
-function mapMeToUser(me: MeResponse): User {
-  const roleLower: User["role"] = me.role === "ADMIN" ? "admin" : "professional";
+function safeParseJwtPayload(token: string | null): JwtPayload | null {
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const json = base64UrlDecode(parts[1]);
+    return JSON.parse(json) as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+function mapTokenToUser(token: string | null): User | null {
+  const p = safeParseJwtPayload(token);
+  if (!p) return null;
+
+  const roles = p.realm_access?.roles ?? [];
+  const isAdmin = roles.includes("fhir-admin") || roles.includes("admin");
 
   const fullName =
-    me.fullName?.trim() || me.name?.trim() || me.email?.trim() || "Usuario";
+    (p.name || "").trim() ||
+    (p.preferred_username || "").trim() ||
+    (p.email || "").trim() ||
+    "Usuario";
 
   return {
-    id: me.id,
+    id: p.sub || "unknown",
     fullName,
-    role: roleLower,
-    specialty: (me.specialty || "").trim(),
+    role: isAdmin ? "admin" : "professional",
+    specialty: "",
   };
 }
 
@@ -104,105 +122,123 @@ function roleLabel(role: User["role"]): string {
   return role === "admin" ? "Administrador" : "Profesional";
 }
 
-const getInitialAuth = (): { user: User | null; token: string | null } => {
-  const token = getAuthToken();
-  return { token: token || null, user: null };
+/* ------------------------------ */
+/* Styles (unificados con TOKENS) */
+/* ------------------------------ */
+
+const TOPBAR_STYLE: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "0.4rem 1.5rem",
+  height: 50,
+  backgroundColor: TOKENS.COLOR_CARD_BG,
+  borderBottom: TOKENS.BORDER_DEFAULT,
+};
+
+const TOPBAR_LEFT_PLACEHOLDER_STYLE: React.CSSProperties = {
+  fontSize: 12,
+  color: "#9ca3af",
+};
+
+const TOPBAR_RIGHT_STYLE: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+};
+
+const FONT_CONTROLS_STYLE: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+};
+
+const FONT_PERCENT_STYLE: React.CSSProperties = {
+  marginLeft: 6,
+  fontSize: 11,
+  color: TOKENS.COLOR_TEXT_MUTED,
+  minWidth: 52,
+  textAlign: "right",
+};
+
+const DEMO_BUTTON_STYLE: React.CSSProperties = {
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: TOKENS.BORDER_DEFAULT,
+  background: TOKENS.COLOR_CARD_BG,
+  color: TOKENS.COLOR_PRIMARY,
+  cursor: "pointer",
+  fontWeight: 600,
+  fontSize: 12,
+};
+
+const USER_AVATAR_STYLE: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  borderRadius: "999px",
+  background: "linear-gradient(135deg, #f97316 0%, #ec4899 100%)",
+  color: "#ffffff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 13,
+  fontWeight: 600,
+};
+
+const USER_META_STYLE: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  lineHeight: 1.1,
+};
+
+const USER_NAME_STYLE: React.CSSProperties = {
+  fontSize: 13,
+};
+
+const USER_ROLE_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  color: TOKENS.COLOR_TEXT_MUTED,
+};
+
+const LOGOUT_BUTTON_STYLE: React.CSSProperties = {
+  marginLeft: 4,
+  border: "none",
+  background: "transparent",
+  color: "#c0392b",
+  cursor: "pointer",
+  fontSize: 12,
+};
+
+const CASELOAD_TEST_BUTTON_STYLE: React.CSSProperties = {
+  position: "fixed",
+  right: 20,
+  bottom: 20,
+  zIndex: 1000,
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: TOKENS.BORDER_DEFAULT,
+  background: TOKENS.COLOR_CARD_BG,
+  color: TOKENS.COLOR_PRIMARY,
+  cursor: "pointer",
+  fontWeight: 600,
+  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.12)",
 };
 
 function App() {
-  const [authData, setAuthData] = useState(() => getInitialAuth());
-  const [isReady, setIsReady] = useState(false);
-  const [activeSection, setActiveSection] = useState<SectionKey>("dashboard");
+  // ✅ Auth desde Keycloak Provider
+  const kc = useKeycloakAuth();
+
+  const [activeSection, setActiveSection] = useState<
+    SectionKey | "caseload"
+  >("dashboard");
 
   // Accessibility: global font scale (1 = 100%)
   const [fontScale, setFontScale] = useState<number>(1);
 
-  const hydrateUser = async (): Promise<boolean> => {
-    const tokenExists = isAuthenticated();
-    if (!tokenExists) return false;
-
-    const result = await fetchMe();
-
-    if (result.ok && result.data) {
-      const me = normalizeMePayload(result.data);
-      if (me?.id) {
-        const user = mapMeToUser(me);
-        setAuthData((prev) => ({ ...prev, user }));
-        return true;
-      }
-    }
-
-    logout();
-    setAuthData({ user: null, token: null });
-    setActiveSection("dashboard");
-    return false;
-  };
-
-  useEffect(() => {
-    const unsubscribe = onAuthChange((token) => {
-      if (!token) {
-        setAuthData({ user: null, token: null });
-        setActiveSection("dashboard");
-      }
-    });
-
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const boot = async () => {
-      const token = getAuthToken();
-      if (!token) {
-        if (!cancelled) setIsReady(true);
-        return;
-      }
-
-      if (!cancelled) {
-        setAuthData({ token, user: null });
-      }
-
-      await hydrateUser();
-
-      if (!cancelled) setIsReady(true);
-    };
-
-    void boot();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     document.documentElement.style.setProperty("--font-scale", String(fontScale));
   }, [fontScale]);
-
-  const handleLogin = (token: string) => {
-    setIsReady(false);
-    setAuthData({ token, user: null });
-
-    void (async () => {
-      await hydrateUser();
-      setIsReady(true);
-    })();
-  };
-
-  const handleLogout = () => {
-    logout();
-    setAuthData({ user: null, token: null });
-    setActiveSection("dashboard");
-  };
-
-  const authContextValue: AuthContextType = {
-    user: authData.user,
-    isAuthenticated: !!authData.token && !!authData.user,
-    isReady,
-    login: handleLogin,
-    logout: handleLogout,
-  };
 
   const handleFontIncrease = () =>
     setFontScale((prev) => Math.min(prev + 0.1, 1.5));
@@ -212,20 +248,28 @@ function App() {
 
   const fontScalePercentage = Math.round(fontScale * 100);
 
-  if (!isReady) {
-    return (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
-        Cargando configuración de la aplicación...
-      </div>
-    );
-  }
+  // User mínimo desde el token (para topbar)
+  const user = useMemo(() => mapTokenToUser(kc.token), [kc.token]);
 
-  if (!authContextValue.isAuthenticated) {
-    return <LoginPage onSuccessfulLogin={handleLogin} />;
+  const authContextValue: AuthContextType = {
+    user,
+    isAuthenticated: kc.isAuthenticated,
+    // No tenemos “ready” explícito; el provider hace init al cargar
+    isReady: true,
+    login: () => {},
+    logout: () => {
+      setActiveSection("dashboard");
+      kc.logout();
+    },
+  };
+
+  // Si no está autenticado → LoginPage (Keycloak)
+  if (!kc.isAuthenticated) {
+    return <LoginPage />;
   }
 
   const userInitials =
-    authData.user?.fullName
+    user?.fullName
       .split(" ")
       .filter(Boolean)
       .map((p) => p[0])
@@ -233,41 +277,30 @@ function App() {
       .join("") ?? "";
 
   const secondaryLabel =
-    authData.user?.specialty?.trim()
-      ? authData.user.specialty
-      : roleLabel(authData.user?.role ?? "professional");
+    user?.specialty?.trim()
+      ? user.specialty
+      : roleLabel(user?.role ?? "professional");
 
   return (
     <AuthContext.Provider value={authContextValue}>
       <div className="app-root">
-        <Sidebar activeSection={activeSection} onSelect={setActiveSection} />
+        <Sidebar
+          activeSection={activeSection as SectionKey}
+          onSelect={setActiveSection as (section: SectionKey) => void}
+        />
 
         <main className="app-main">
-          <header
-            className="app-topbar-minimal"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "0.4rem 1.5rem",
-              height: 50,
-              backgroundColor: "#FFFFFF",
-              borderBottom: "1px solid #e5e7eb",
-            }}
-          >
+          <header className="app-topbar-minimal" style={TOPBAR_STYLE}>
             <div
               className="app-topbar-left"
-              style={{ fontSize: 12, color: "#9ca3af" }}
+              style={TOPBAR_LEFT_PLACEHOLDER_STYLE}
             />
 
-            <div
-              className="app-topbar-right"
-              style={{ display: "flex", alignItems: "center", gap: 12 }}
-            >
+            <div className="app-topbar-right" style={TOPBAR_RIGHT_STYLE}>
               <div
                 className="font-size-controls"
                 aria-label="Ajustar tamaño de texto"
-                style={{ display: "flex", alignItems: "center", gap: 4 }}
+                style={FONT_CONTROLS_STYLE}
               >
                 <button type="button" onClick={handleFontDecrease}>
                   A-
@@ -278,85 +311,32 @@ function App() {
                 <button type="button" onClick={handleFontIncrease}>
                   A+
                 </button>
-                <span
-                  style={{
-                    marginLeft: 6,
-                    fontSize: 11,
-                    color: "#6b7280",
-                    minWidth: 52,
-                    textAlign: "right",
-                  }}
-                >
-                  {fontScalePercentage}%
-                </span>
+
+                <span style={FONT_PERCENT_STYLE}>{fontScalePercentage}%</span>
               </div>
 
               {DEMO_MODE && (
                 <button
                   onClick={() => setActiveSection("economicsDemo")}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: "1px solid #e5e7eb",
-                    background: "#ffffff",
-                    color: "#2563eb",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                    fontSize: 12,
-                  }}
+                  style={DEMO_BUTTON_STYLE}
                 >
                   Impacto Económico
                 </button>
               )}
 
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "999px",
-                  background:
-                    "linear-gradient(135deg, #f97316 0%, #ec4899 100%)",
-                  color: "#ffffff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
-              >
-                {userInitials}
-              </div>
+              <div style={USER_AVATAR_STYLE}>{userInitials}</div>
 
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  lineHeight: 1.1,
-                }}
-              >
-                <strong style={{ fontSize: 13 }}>
-                  {authData.user?.fullName}
-                </strong>
-                <span
-                  className="app-header-role"
-                  style={{ fontSize: 11, color: "#6b7280" }}
-                >
+              <div style={USER_META_STYLE}>
+                <strong style={USER_NAME_STYLE}>{user?.fullName}</strong>
+                <span className="app-header-role" style={USER_ROLE_STYLE}>
                   {secondaryLabel}
                 </span>
               </div>
 
               <button
-                onClick={handleLogout}
+                onClick={authContextValue.logout}
                 className="logout-button"
-                style={{
-                  marginLeft: 4,
-                  border: "none",
-                  background: "transparent",
-                  color: "#c0392b",
-                  cursor: "pointer",
-                  fontSize: 12,
-                }}
+                style={LOGOUT_BUTTON_STYLE}
               >
                 (Salir)
               </button>
@@ -369,6 +349,7 @@ function App() {
             {activeSection === "enrollment" && <PatientEnrollmentPage />}
             {activeSection === "enrollments" && <EnrollmentsPage />}
             {activeSection === "alerts" && <AlertsPage />}
+            {activeSection === "clinicalSignals" && <ClinicalSignalsPage />}
             {activeSection === "dispenses" && <DispensesPage />}
             {activeSection === "ambulatory" && <AmbulatoryPage />}
             {activeSection === "audit" && <AuditPage />}
@@ -377,7 +358,17 @@ function App() {
             {activeSection === "iaPredictiva" && <IAPredictivaPage />}
             {activeSection === "economicsDemo" && <EconomicsDemoView />}
             {activeSection === "followup" && <FollowupCaseloadPage />}
+            {activeSection === "educators" && <EducatorsPage />}
+            {activeSection === "caseload" && <CaseloadPage />}
           </div>
+
+          <button
+            type="button"
+            style={CASELOAD_TEST_BUTTON_STYLE}
+            onClick={() => setActiveSection("caseload")}
+          >
+            Ver Caseload
+          </button>
         </main>
       </div>
     </AuthContext.Provider>

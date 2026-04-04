@@ -67,7 +67,10 @@ const AdherenceBarChart: React.FC<AdherenceBarChartProps> = ({
         />
         <Tooltip
           cursor={{ fill: "rgba(148, 163, 184, 0.15)" }}
-          formatter={(value: number) => [`${value}%`, "Adherencia"]}
+          formatter={(value) => {
+            const safeValue = typeof value === "number" ? value : 0;
+            return [`${safeValue}%`, "Adherencia"];
+          }}
           labelFormatter={(label) => `Mes: ${label}`}
         />
         {/* Línea de meta de adherencia */}

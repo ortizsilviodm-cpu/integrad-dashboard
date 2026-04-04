@@ -6,12 +6,19 @@ import { API_URL } from "../config/api";
 /**
  * Códigos estándar de indicadores clínicos
  * (alineados al modelo IntegraD — HbA1c, glucemia, PA, IMC, etc.).
+ *
+ * NOTA:
+ * - En backend tu mapeo devuelve BP_SYSTOLIC / BP_DIASTOLIC.
+ * - En algunos módulos legacy se usa SYSTOLIC_BP / DIASTOLIC_BP.
+ * - El frontend soporta ambos para no romper historial viejo.
  */
 export type ClinicalIndicatorCode =
   | "HBA1C"
   | "GLUCOSE_FASTING"
   | "BP_SYSTOLIC"
   | "BP_DIASTOLIC"
+  | "SYSTOLIC_BP"
+  | "DIASTOLIC_BP"
   | "BMI"
   | "MICROALBUMINURIA"
   | "PROTEINURIA"
@@ -30,7 +37,7 @@ export interface ClinicalIndicatorHistoryRow {
   valueText: string | null;
   unit: string | null;
   measuredAt: string; // ISO string de la fecha de medición
-  createdAt?: string;
+  createdAt?: string | null;
   source?: string | null; // Ej: "manual", "app", "integración APOS", etc.
 }
 
@@ -39,6 +46,15 @@ export interface ClinicalHistoryResult {
   data: ClinicalIndicatorHistoryRow[];
   error?: string;
 }
+
+/**
+ * Contrato del backend (según tu patients/router.ts):
+ * GET /patients/:id/clinical-indicators  -> { data: ClinicalIndicatorHistoryRow[] }
+ */
+type ClinicalHistoryApiResponse = {
+  data: ClinicalIndicatorHistoryRow[];
+  meta?: any;
+};
 
 /**
  * Obtiene el historial completo de indicadores clínicos de un paciente.
@@ -59,7 +75,7 @@ export async function fetchClinicalHistory(
     patientId
   )}/clinical-indicators`;
 
-  const res = await safeFetch<ClinicalIndicatorHistoryRow[]>(url);
+  const res = await safeFetch<ClinicalHistoryApiResponse>(url);
 
   if (!res.ok) {
     return {
@@ -69,8 +85,10 @@ export async function fetchClinicalHistory(
     };
   }
 
+  const rows = res.data?.data ?? [];
+
   return {
     ok: true,
-    data: res.data ?? [],
+    data: Array.isArray(rows) ? rows : [],
   };
 }

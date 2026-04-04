@@ -1,5 +1,6 @@
 // integrad-dashboard/src/views/patientClinical/ClinicalRiskCards.tsx
 
+import { useState } from "react";
 import type { ClinicalRiskSummary } from "../../api/patientSummary";
 
 type RiskLevel = "low" | "medium" | "high" | undefined;
@@ -31,6 +32,7 @@ function RiskCard({
   helper?: string;
 }) {
   const info = riskLabel(level);
+
   return (
     <div
       style={{
@@ -72,19 +74,85 @@ function RiskCard({
 }
 
 export default function ClinicalRiskCards({ risk }: ClinicalRiskCardsProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-        gap: 12,
+        background: "#f9fafb",
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        padding: 16,
         marginBottom: 16,
       }}
     >
-      <RiskCard title="Riesgo de retinopatía" level={risk?.retinopathyRisk} />
-      <RiskCard title="Riesgo renal" level={risk?.renalRisk} />
-      <RiskCard title="Riesgo macrovascular" level={risk?.macrovascularRisk} />
-      <RiskCard title="Riesgo neuropático" level={risk?.neuropathyRisk} />
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          marginBottom: isExpanded ? 12 : 0,
+        }}
+      >
+        <div>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "1rem",
+              fontWeight: 600,
+              color: "#111827",
+            }}
+          >
+            Riesgo clínico
+          </h3>
+          <p
+            style={{
+              margin: "2px 0 0 0",
+              fontSize: "0.8rem",
+              color: "#6b7280",
+            }}
+          >
+            Priorización resumida de complicaciones crónicas vinculadas a diabetes.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsExpanded((prev) => !prev)}
+          style={{
+            border: "1px solid #d1d5db",
+            borderRadius: 999,
+            padding: "6px 12px",
+            cursor: "pointer",
+            background: "#ffffff",
+            color: "#374151",
+            fontSize: "0.82rem",
+            fontWeight: 600,
+            flexShrink: 0,
+          }}
+        >
+          {isExpanded ? "Ocultar" : "Mostrar"}
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+            gap: 12,
+          }}
+        >
+          <RiskCard title="Riesgo de retinopatía" level={risk?.retinopathyRisk} />
+          <RiskCard title="Riesgo renal" level={risk?.renalRisk} />
+          <RiskCard
+            title="Riesgo macrovascular"
+            level={risk?.macrovascularRisk}
+          />
+          <RiskCard title="Riesgo neuropático" level={risk?.neuropathyRisk} />
+        </div>
+      )}
     </div>
   );
 }

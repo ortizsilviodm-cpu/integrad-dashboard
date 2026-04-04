@@ -21,6 +21,44 @@ import {
  * - Usa estilos coherentes con el Dashboard (card .app-table).
  */
 
+/* ------------------------------------------ */
+/* Auth — Fuente única (compatibilidad rápida) */
+/* ------------------------------------------ */
+/**
+ * El login hoy guarda el token en sessionStorage (integrad_access_token),
+ * pero algunos módulos API lo buscan en localStorage.
+ *
+ * Fix Sprint 54A: antes de llamar APIs, aseguramos que el token exista y
+ * lo espejamos a localStorage para no romper el resto del stack.
+ */
+const ACCESS_TOKEN_KEY = "integrad_access_token";
+
+function getAccessToken(): string | null {
+  const fromSession = sessionStorage.getItem(ACCESS_TOKEN_KEY);
+  if (fromSession && fromSession.trim()) return fromSession.trim();
+
+  const fromLocal = localStorage.getItem(ACCESS_TOKEN_KEY);
+  if (fromLocal && fromLocal.trim()) return fromLocal.trim();
+
+  return null;
+}
+
+function ensureTokenAvailableOrThrow(): string {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("No hay token de autenticación. Inicie sesión nuevamente.");
+  }
+
+  // Compatibilidad: si el token está en sessionStorage, espejarlo a localStorage.
+  // (Esto evita que módulos legacy que leen localStorage fallen.)
+  const inLocal = localStorage.getItem(ACCESS_TOKEN_KEY);
+  if (!inLocal || !inLocal.trim()) {
+    localStorage.setItem(ACCESS_TOKEN_KEY, token);
+  }
+
+  return token;
+}
+
 // 🎨 Estilos reutilizables (solo para este formulario)
 const formWrapperStyle: React.CSSProperties = {
   display: "flex",
@@ -199,8 +237,7 @@ const defaultEnrollmentForm: EnrollmentRequest = {
     healthPlan: DEFAULT_HEALTH_PLAN,
     planCode: "",
   },
-   appUser: undefined,
-
+  appUser: undefined,
   program: {
     mainProvider: "",
     notes: "",
@@ -254,12 +291,7 @@ const PatientEnrollmentPage: React.FC = () => {
     const indicators: SaveClinicalIndicatorsRequest["indicators"] = [];
     const nowIso = new Date().toISOString();
 
-    const pushNumeric = (
-      value: string,
-      type: string,
-      unit?: string,
-      _context?: string
-    ) => {
+    const pushNumeric = (value: string, type: string, unit?: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
 
@@ -271,17 +303,11 @@ const PatientEnrollmentPage: React.FC = () => {
         valueNumeric: num,
         unit: unit ?? null,
         takenAt: nowIso,
-        // ⚠️ FIX: se eliminó `context` porque no existe en ClinicalIndicatorInput
         source: "MANUAL",
       });
     };
 
-    const pushText = (
-      value: string,
-      type: string,
-      unit?: string,
-      _context?: string
-    ) => {
+    const pushText = (value: string, type: string, unit?: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
 
@@ -290,23 +316,16 @@ const PatientEnrollmentPage: React.FC = () => {
         valueText: trimmed,
         unit: unit ?? null,
         takenAt: nowIso,
-        // ⚠️ FIX: se eliminó `context`
         source: "MANUAL",
       });
     };
 
     // Perfil metabólico
-    pushNumeric(
-      clinicalForm.glucoseFasting,
-      "GLUCOSE_FASTING",
-      "mg/dL",
-      "ayunas"
-    );
+    pushNumeric(clinicalForm.glucoseFasting, "GLUCOSE_FASTING", "mg/dL");
     pushNumeric(
       clinicalForm.glucosePostprandial,
       "GLUCOSE_POSTPRANDIAL",
-      "mg/dL",
-      "posprandial"
+      "mg/dL"
     );
     pushNumeric(clinicalForm.hba1c, "HBA1C", "%");
     pushNumeric(clinicalForm.totalCholesterol, "TOTAL_CHOLESTEROL", "mg/dL");
@@ -336,6 +355,10 @@ const PatientEnrollmentPage: React.FC = () => {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // ✅ DEBUG Sprint 54A: confirmar que el submit corre
+    console.log("[ENROLL] submit fired", new Date().toISOString());
+
     setLoading(true);
     setError(null);
     setClinicalError(null);
@@ -352,6 +375,12 @@ const PatientEnrollmentPage: React.FC = () => {
     };
 
     try {
+      // ✅ Garantizar token disponible antes de llamar API (fix Sprint 54A)
+      ensureTokenAvailableOrThrow();
+
+      // ✅ DEBUG Sprint 54A: confirmar que llegamos al call del API
+      console.log("[ENROLL] calling enrollChronicPatient", payload);
+
       // 1) Enrolar paciente crónico (parte administrativa)
       const response = await enrollChronicPatient(payload);
       setSuccess(response);
@@ -365,6 +394,8 @@ const PatientEnrollmentPage: React.FC = () => {
         indicatorsPayload.indicators.length > 0
       ) {
         try {
+          // ✅ Garantizar token también para el POST de indicadores
+          ensureTokenAvailableOrThrow();
           await saveClinicalIndicators(response.patient.id, indicatorsPayload);
         } catch (err: any) {
           console.error("Error guardando ficha clínica inicial:", err);
@@ -492,7 +523,7 @@ const PatientEnrollmentPage: React.FC = () => {
                 type="text"
                 placeholder="M / F / X, etc."
                 style={getInputStyle("gender")}
-                value={form.personal.gender ?? ""}
+                value={(form as any).personal?.gender ?? ""}
                 onFocus={() => setFocusedField("gender")}
                 onBlur={() => setFocusedField(null)}
                 onChange={(e) =>
@@ -644,7 +675,7 @@ const PatientEnrollmentPage: React.FC = () => {
           <fieldset
             style={{
               ...fieldsetStyle,
-              gridColumn: "1 / -1", // ocupa todo el ancho de la grilla
+              gridColumn: "1 / -1",
             }}
           >
             <legend style={legendStyle}>
@@ -879,8 +910,6 @@ const PatientEnrollmentPage: React.FC = () => {
                 Programa: {success.enrollment.programType} (
                 {success.enrollment.status})
               </div>
-              {/* 🔜 Aquí después podemos sumar un botón "Ver ficha clínica completa"
-                  cuando tengamos clara la ruta del router de pacientes */}
             </div>
           )}
         </div>
