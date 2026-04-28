@@ -56,7 +56,7 @@ export default function CaseloadView({
     caseId: string;
     visibleReason: string;
   }) {
-    const result = await handleAction(input.patientId, "TAKE");
+    const result = await handleAction(input.caseId, "TAKE");
 
     if (!result) {
       return;
@@ -250,18 +250,18 @@ export default function CaseloadView({
                                     visibleReason: item.visibleReason,
                                   })
                                 }
-                                disabled={actingId === item.patientId}
+                                disabled={actingId === item.caseId}
                                 style={{
                                   ...btnPrimary,
                                   opacity:
-                                    actingId === item.patientId ? 0.7 : 1,
+                                    actingId === item.caseId ? 0.7 : 1,
                                   cursor:
-                                    actingId === item.patientId
+                                    actingId === item.caseId
                                       ? "not-allowed"
                                       : "pointer",
                                 }}
                               >
-                                {actingId === item.patientId
+                                {actingId === item.caseId
                                   ? "Gestionando..."
                                   : "Gestionar"}
                               </button>
@@ -271,20 +271,20 @@ export default function CaseloadView({
                               <button
                                 type="button"
                                 onClick={() =>
-                                  handleAction(item.patientId, "RELEASE")
+                                  handleAction(item.caseId, "RELEASE")
                                 }
-                                disabled={actingId === item.patientId}
+                                disabled={actingId === item.caseId}
                                 style={{
                                   ...btnSecondary,
                                   opacity:
-                                    actingId === item.patientId ? 0.7 : 1,
+                                    actingId === item.caseId ? 0.7 : 1,
                                   cursor:
-                                    actingId === item.patientId
+                                    actingId === item.caseId
                                       ? "not-allowed"
                                       : "pointer",
                                 }}
                               >
-                                {actingId === item.patientId
+                                {actingId === item.caseId
                                   ? "Procesando..."
                                   : "Soltar caso"}
                               </button>
