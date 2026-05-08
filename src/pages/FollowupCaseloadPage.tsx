@@ -33,6 +33,7 @@ import {
   fetchPatientSummary,
   type PatientSummaryResponse,
 } from "../api/patientSummary";
+import { useFollowupWorkspace } from "../hooks/useFollowupWorkspace";
 import { usePatientContext } from "../hooks/usePatientContext";
 
 const PAGE_LIMIT = 20;
@@ -523,9 +524,6 @@ export default function FollowupCaseloadPage({
   const [sla, setSla] = useState<FollowupSla>("any");
 
   // Determinar modo de apertura: patientId es la unidad principal
-  const isPatientMode = Boolean(initialPatientId);
-  const isCaseMode = Boolean(initialEventId);
-
   // Cargar datos del paciente en modo paciente
   const [patientSummary, setPatientSummary] = useState<PatientSummaryResponse | null>(null);
   const [patientLoading, setPatientLoading] = useState(false);
@@ -570,40 +568,29 @@ export default function FollowupCaseloadPage({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
-  const selectedEvent = useMemo(() => {
-    if (!selectedEventId) return null;
-    return (
-      rows.find((r) => r.id === selectedEventId) ??
-      (targetEventRow?.id === selectedEventId ? targetEventRow : null)
-    );
-  }, [rows, selectedEventId, targetEventRow]);
-
-  const visibleRows = useMemo(() => {
-    if (!isPatientMode || !initialPatientId) {
-      return rows;
-    }
-
-    const filteredRows = rows.filter(
-      (row) => row.patientId === initialPatientId || row.patient.id === initialPatientId,
-    );
-
-    if (
-      targetEventRow &&
-      (targetEventRow.patientId === initialPatientId ||
-        targetEventRow.patient.id === initialPatientId) &&
-      !filteredRows.some((row) => row.id === targetEventRow.id)
-    ) {
-      return [targetEventRow, ...filteredRows];
-    }
-
-    return filteredRows;
-  }, [initialPatientId, isPatientMode, rows, targetEventRow]);
-
   const currentUserEmail = useMemo(() => readCurrentUserEmail(), []);
-  const selectedEventLocked = selectedEvent
-    ? isLockedForCurrentUser(selectedEvent, currentUserEmail)
-    : false;
-  const isWorkspacePanelOpen = actionsOpen && Boolean(selectedEventId);
+  const {
+    isPatientMode,
+    isCaseMode,
+    selectedPatientSummary,
+    selectedEvent,
+    visibleRows,
+    selectedEventLocked,
+    isWorkspacePanelOpen,
+    caseReference,
+    showPatientWorkspace,
+    showGlobalCaseload,
+  } = useFollowupWorkspace({
+    initialPatientId,
+    initialEventId,
+    patientSummary,
+    rows,
+    targetEventRow,
+    selectedEventId,
+    actionsOpen,
+    currentUserEmail,
+    isLockedForCurrentUser,
+  });
 
   const [actionsLoading, setActionsLoading] = useState(false);
   const [actionsError, setActionsError] = useState<string | null>(null);
@@ -618,8 +605,6 @@ export default function FollowupCaseloadPage({
   const [educationError, setEducationError] = useState<string | null>(null);
 
   if (isCaseMode && !isPatientMode) {
-    const caseReference = initialEventId ? initialEventId.slice(0, 8) : "--------";
-
     if (loading) {
       return (
         <div
@@ -1126,14 +1111,14 @@ export default function FollowupCaseloadPage({
 
   return (
     <div style={{ padding: 16 }}>
-      {isPatientMode ? (
+      {showPatientWorkspace ? (
         <PatientWorkspaceView
           isWorkspacePanelOpen={isWorkspacePanelOpen}
           onBackToCaseload={onBackToCaseload}
           backButtonStyle={btnBase}
           patientLoading={patientLoading}
           patientError={patientError}
-          patientSummary={patientSummary}
+          patientSummary={selectedPatientSummary}
           initialPatientId={initialPatientId}
           initialEventId={initialEventId}
           patientContext={patientContext.data}
@@ -1169,7 +1154,7 @@ export default function FollowupCaseloadPage({
           btnPrimary={btnPrimary}
           btnBase={btnBase}
         />
-      ) : (
+      ) : showGlobalCaseload ? (
         <CaseloadGlobalView
           status={status}
           assigned={assigned}
@@ -1201,7 +1186,7 @@ export default function FollowupCaseloadPage({
           btnPrimary={btnPrimary}
           btnBase={btnBase}
         />
-      )}
+      ) : null}
 
       <InterventionPanelContainer
         open={actionsOpen && Boolean(selectedEventId)}
