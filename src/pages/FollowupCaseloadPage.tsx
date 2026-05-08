@@ -1,20 +1,23 @@
-/* integrad-dashboard\src\pages\FollowupCaseloadPage.tsx */
+/* integrad-dashboard/src/pages/FollowupCaseloadPage.tsx */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  fetchFollowupEventById,
   fetchFollowupEvents,
   takeFollowupEvent,
   closeFollowupEvent,
-  fetchFollowupEventActions,
+  fetchFollowupHistoryTrace,
   createFollowupEventAction,
+  fetchEventRiskStratification,
   type FollowupEventStatus,
   type FollowupAssigned,
   type FollowupSla,
   type FollowupEventRow,
-  type FollowupEventActionRow,
+  type FollowupHistoryTraceEntry,
   type FollowupEventActionType,
   type FollowupEventActionOutcome,
   type FollowupResolutionType,
+  type RiskStratificationV1,
 } from "../api/followup";
 import {
   fetchEducationInteractions,
@@ -22,10 +25,24 @@ import {
   type EducationInteractionRow,
 } from "../api/education";
 import { getAuthToken } from "../store/authStore";
-import { InterventionPanel } from "../components/followup/InterventionPanel";
+import InterventionPanelContainer from "../components/followup/InterventionPanelContainer";
+import CaseloadGlobalView from "../components/followup/CaseloadGlobalView";
+import PatientWorkspaceView from "../components/followup/PatientWorkspaceView";
 import { PatientAvatar } from "../components/common/PatientAvatar";
+import {
+  fetchPatientSummary,
+  type PatientSummaryResponse,
+} from "../api/patientSummary";
+import { usePatientContext } from "../hooks/usePatientContext";
 
 const PAGE_LIMIT = 20;
+
+type FollowupCaseloadPageProps = {
+  initialEventId?: string | null;
+  initialCaseSummary?: string | null;
+  initialPatientId?: string | null;
+  onBackToCaseload?: () => void;
+};
 
 /* ----------------------------- */
 /* Labels (UI ES)                */
@@ -487,11 +504,49 @@ function getSuggestionStyle(row: FollowupEventRow | null): React.CSSProperties {
   };
 }
 
-export default function FollowupCaseloadPage() {
+export default function FollowupCaseloadPage({
+  initialEventId = null,
+  initialCaseSummary = null,
+  initialPatientId = null,
+  onBackToCaseload,
+}: FollowupCaseloadPageProps) {
   const [rows, setRows] = useState<FollowupEventRow[]>([]);
-  const [status, setStatus] = useState<FollowupEventStatus>("OPEN");
-  const [assigned, setAssigned] = useState<FollowupAssigned>("any");
+  const [targetEventRow, setTargetEventRow] = useState<FollowupEventRow | null>(
+    null,
+  );
+  const [status, setStatus] = useState<FollowupEventStatus>(() =>
+    initialEventId ? "IN_PROGRESS" : "OPEN",
+  );
+  const [assigned, setAssigned] = useState<FollowupAssigned>(() =>
+    initialEventId ? "me" : "any",
+  );
   const [sla, setSla] = useState<FollowupSla>("any");
+
+  // Determinar modo de apertura: patientId es la unidad principal
+  const isPatientMode = Boolean(initialPatientId);
+  const isCaseMode = Boolean(initialEventId);
+
+  // Cargar datos del paciente en modo paciente
+  const [patientSummary, setPatientSummary] = useState<PatientSummaryResponse | null>(null);
+  const [patientLoading, setPatientLoading] = useState(false);
+  const [patientError, setPatientError] = useState<string | null>(null);
+  const patientContext = usePatientContext(initialPatientId);
+
+  useEffect(() => {
+    if (!initialPatientId) return;
+    setPatientLoading(true);
+    setPatientError(null);
+    fetchPatientSummary(initialPatientId)
+      .then((res) => {
+        if (res.ok && res.data) {
+          setPatientSummary(res.data);
+        } else {
+          setPatientError(res.error || "No se pudo cargar");
+        }
+      })
+      .catch(() => setPatientError("Error de conexión"))
+      .finally(() => setPatientLoading(false));
+  }, [initialPatientId]);
 
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -517,21 +572,147 @@ export default function FollowupCaseloadPage() {
 
   const selectedEvent = useMemo(() => {
     if (!selectedEventId) return null;
-    return rows.find((r) => r.id === selectedEventId) ?? null;
-  }, [rows, selectedEventId]);
+    return (
+      rows.find((r) => r.id === selectedEventId) ??
+      (targetEventRow?.id === selectedEventId ? targetEventRow : null)
+    );
+  }, [rows, selectedEventId, targetEventRow]);
+
+  const visibleRows = useMemo(() => {
+    if (!isPatientMode || !initialPatientId) {
+      return rows;
+    }
+
+    const filteredRows = rows.filter(
+      (row) => row.patientId === initialPatientId || row.patient.id === initialPatientId,
+    );
+
+    if (
+      targetEventRow &&
+      (targetEventRow.patientId === initialPatientId ||
+        targetEventRow.patient.id === initialPatientId) &&
+      !filteredRows.some((row) => row.id === targetEventRow.id)
+    ) {
+      return [targetEventRow, ...filteredRows];
+    }
+
+    return filteredRows;
+  }, [initialPatientId, isPatientMode, rows, targetEventRow]);
 
   const currentUserEmail = useMemo(() => readCurrentUserEmail(), []);
   const selectedEventLocked = selectedEvent
     ? isLockedForCurrentUser(selectedEvent, currentUserEmail)
     : false;
+  const isWorkspacePanelOpen = actionsOpen && Boolean(selectedEventId);
 
   const [actionsLoading, setActionsLoading] = useState(false);
   const [actionsError, setActionsError] = useState<string | null>(null);
-  const [actions, setActions] = useState<FollowupEventActionRow[]>([]);
+  const [historyTrace, setHistoryTrace] = useState<FollowupHistoryTraceEntry[]>([]);
+  const [riskStratification, setRiskStratification] =
+    useState<RiskStratificationV1 | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [riskError, setRiskError] = useState<string | null>(null);
 
   const [education, setEducation] = useState<EducationInteractionRow[]>([]);
   const [educationLoading, setEducationLoading] = useState(false);
   const [educationError, setEducationError] = useState<string | null>(null);
+
+  if (isCaseMode && !isPatientMode) {
+    const caseReference = initialEventId ? initialEventId.slice(0, 8) : "--------";
+
+    if (loading) {
+      return (
+        <div
+          style={{
+            color: "#1e3a8a",
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            borderRadius: 12,
+            padding: "12px 14px",
+            marginBottom: 8,
+            fontSize: 13,
+          }}
+        >
+          Cargando caso {caseReference}…
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div
+          style={{
+            color: "#dc2626",
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: 12,
+            padding: "12px 14px",
+            marginBottom: 8,
+            fontSize: 13,
+          }}
+        >
+          Error: {error}
+        </div>
+      );
+    }
+
+    if (!targetEventRow) {
+      return (
+        <div
+          style={{
+            color: "#6b7280",
+            background: "#f3f4f6",
+            border: "1px solid #d1d5db",
+            borderRadius: 12,
+            padding: "12px 14px",
+            marginBottom: 8,
+            fontSize: 13,
+          }}
+        >
+          Caso no encontrado
+        </div>
+      );
+    }
+
+    return (
+      <div
+        style={{
+          color: "#1e3a8a",
+          background: "#eff6ff",
+          border: "1px solid #bfdbfe",
+          borderRadius: 12,
+          padding: "12px 14px",
+          marginBottom: 8,
+          fontSize: 13,
+          lineHeight: 1.5,
+        }}
+      >
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          Gestionando caso #{caseReference}…
+        </div>
+        <div>
+          <span style={{ fontWeight: 500 }}>Paciente:</span>{" "}
+          {targetEventRow.patient.fullName || targetEventRow.patientId}
+        </div>
+        <div>
+          <span style={{ fontWeight: 500 }}>Motivo:</span>{" "}
+          {initialCaseSummary || eventLabel(targetEventRow) || "Sin motivo"}
+        </div>
+        <div>
+          <span style={{ fontWeight: 500 }}>Prioridad:</span>{" "}
+          {severityLabel(targetEventRow.severity)}
+        </div>
+        <div>
+          <span style={{ fontWeight: 500 }}>Estado:</span>{" "}
+          {targetEventRow.status === "IN_PROGRESS"
+            ? "En curso"
+            : targetEventRow.status === "OPEN"
+              ? "Pendiente"
+              : targetEventRow.status}
+        </div>
+      </div>
+    );
+  }
 
   const [newActionType, setNewActionType] =
     useState<FollowupEventActionType>("WHATSAPP");
@@ -543,6 +724,9 @@ export default function FollowupCaseloadPage() {
   const [newEducationNote, setNewEducationNote] = useState("");
   const [creatingEducation, setCreatingEducation] = useState(false);
 
+  const hasAutoOpenedRef = useRef(false);
+  const riskRequestIdRef = useRef(0);
+
   useEffect(() => {
     if (!actionsOpen || !selectedEvent) return;
 
@@ -551,15 +735,23 @@ export default function FollowupCaseloadPage() {
     setNewOutcome(suggestion.outcome);
   }, [actionsOpen, selectedEvent]);
 
-  async function loadFirstPage() {
+  async function loadFirstPage(filters?: {
+    status?: FollowupEventStatus;
+    assigned?: FollowupAssigned;
+    sla?: FollowupSla;
+  }) {
+    const effectiveStatus = filters?.status ?? status;
+    const effectiveAssigned = filters?.assigned ?? assigned;
+    const effectiveSla = filters?.sla ?? sla;
+
     setLoading(true);
     setError(null);
 
     try {
       const res = await fetchFollowupEvents({
-        status,
-        assigned,
-        sla,
+        status: effectiveStatus,
+        assigned: effectiveAssigned,
+        sla: effectiveSla,
         limit: PAGE_LIMIT,
       });
 
@@ -608,12 +800,101 @@ export default function FollowupCaseloadPage() {
     }
   }
 
+  function upsertRow(row: FollowupEventRow) {
+    setRows((prev) => {
+      const existingIndex = prev.findIndex((item) => item.id === row.id);
+
+      if (existingIndex === -1) {
+        return [row, ...prev];
+      }
+
+      const next = [...prev];
+      next[existingIndex] = row;
+      return next;
+    });
+  }
+
+  function closeActionsModal() {
+    riskRequestIdRef.current += 1;
+    setActionsOpen(false);
+    setSelectedEventId(null);
+    setHistoryTrace([]);
+    setActionsError(null);
+    setActionsLoading(false);
+    setRiskStratification(null);
+    setRiskError(null);
+    setRiskLoading(false);
+
+    setEducation([]);
+    setEducationError(null);
+    setEducationLoading(false);
+    setNewEducationNote("");
+    setCreatingEducation(false);
+
+    setClosingEventId(null);
+    setClosingResolutionType(null);
+    setClosingNote("");
+    setConfirmingClose(false);
+
+    setNewActionType("WHATSAPP");
+    setNewOutcome("CONTACTED");
+    setNewNote("");
+    setCreatingAction(false);
+  }
+
   useEffect(() => {
+    if (!initialEventId) {
+      hasAutoOpenedRef.current = false;
+      setTargetEventRow(null);
+      return;
+    }
+
+    setStatus("IN_PROGRESS");
+    setAssigned("me");
+    setSla("any");
+    setTargetEventRow(null);
+
     closeActionsModal();
-    setRows([]);
-    setHasNext(false);
-    setNextCursor(undefined);
-    loadFirstPage();
+
+    hasAutoOpenedRef.current = false;
+
+    void (async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetchFollowupEventById(initialEventId);
+        setTargetEventRow(response.data);
+        upsertRow(response.data);
+        hasAutoOpenedRef.current = true;
+        await openActions(response.data.id, response.data);
+        await loadFirstPage({
+          status: "IN_PROGRESS",
+          assigned: "me",
+          sla: "any",
+        });
+      } catch (e: unknown) {
+        const message =
+          e instanceof Error ? e.message : "Error cargando evento exacto";
+        setRows([]);
+        setHasNext(false);
+        setNextCursor(undefined);
+        setError(
+          `No se pudo abrir el evento solicitado (${initialEventId}): ${message}`,
+        );
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEventId]);
+
+  useEffect(() => {
+    if (initialEventId && !hasAutoOpenedRef.current) return;
+
+    closeActionsModal();
+    hasAutoOpenedRef.current = false;
+    void loadFirstPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, assigned, sla]);
 
@@ -643,6 +924,19 @@ export default function FollowupCaseloadPage() {
     setSuccessMessage(null);
   }
 
+  async function loadHistoryTrace(eventId: string) {
+    try {
+      const res = await fetchFollowupHistoryTrace(eventId);
+      setHistoryTrace(res.data ?? []);
+    } catch (e: unknown) {
+      const message =
+        e instanceof Error ? e.message : "Error cargando trazabilidad";
+      setActionsError(message);
+    } finally {
+      setActionsLoading(false);
+    }
+  }
+
   async function onConfirmClose() {
     if (!selectedEvent) return;
     if (!closingResolutionType) return;
@@ -658,8 +952,21 @@ export default function FollowupCaseloadPage() {
         ...(closingNote.trim() ? { note: closingNote.trim() } : {}),
       });
 
-      setSuccessMessage("Evento cerrado correctamente.");
-      closeActionsModal();
+      const refreshed = await fetchFollowupEventById(selectedEvent.id);
+      setTargetEventRow(refreshed.data);
+      upsertRow(refreshed.data);
+      setSelectedEventId(refreshed.data.id);
+      setActionsOpen(true);
+      setClosingEventId(null);
+      setClosingResolutionType(null);
+      setClosingNote("");
+      await loadHistoryTrace(refreshed.data.id);
+
+      setSuccessMessage(
+        status === "CLOSED"
+          ? "Evento cerrado correctamente. La traza quedó actualizada."
+          : "Evento cerrado correctamente. Puede dejar de aparecer en este filtro porque ya no está en curso.",
+      );
       await loadFirstPage();
     } catch (e: unknown) {
       const message =
@@ -670,31 +977,55 @@ export default function FollowupCaseloadPage() {
     }
   }
 
-  async function openActions(eventId: string) {
+  async function openActions(eventId: string, providedRow?: FollowupEventRow) {
+    if (providedRow) {
+      setTargetEventRow(providedRow);
+    }
+
     setSelectedEventId(eventId);
     setActionsOpen(true);
 
     setActionsError(null);
     setActionsLoading(true);
-    setActions([]);
+    setHistoryTrace([]);
     setEducation([]);
     setEducationError(null);
     setEducationLoading(true);
     setSuccessMessage(null);
+    setRiskStratification(null);
+    setRiskError(null);
+    setRiskLoading(true);
 
-    const selectedRow = rows.find((row) => row.id === eventId);
+    const currentRiskRequestId = riskRequestIdRef.current + 1;
+    riskRequestIdRef.current = currentRiskRequestId;
+
+    const selectedRow =
+      providedRow ??
+      rows.find((row) => row.id === eventId) ??
+      (targetEventRow?.id === eventId ? targetEventRow : null);
     const patientId = selectedRow?.patientId ?? null;
 
-    try {
-      const res = await fetchFollowupEventActions(eventId);
-      setActions(res.data ?? []);
-    } catch (e: unknown) {
-      const message =
-        e instanceof Error ? e.message : "Error cargando acciones";
-      setActionsError(message);
-    } finally {
-      setActionsLoading(false);
-    }
+    void fetchEventRiskStratification(eventId)
+      .then((result) => {
+        if (riskRequestIdRef.current !== currentRiskRequestId) return;
+        setRiskStratification(result);
+      })
+      .catch((e: unknown) => {
+        if (riskRequestIdRef.current !== currentRiskRequestId) return;
+
+        const message =
+          e instanceof Error
+            ? e.message
+            : "Error cargando estratificación de riesgo";
+
+        setRiskError(message);
+      })
+      .finally(() => {
+        if (riskRequestIdRef.current !== currentRiskRequestId) return;
+        setRiskLoading(false);
+      });
+
+    await loadHistoryTrace(eventId);
 
     if (!patientId) {
       setEducationError("No se pudo identificar el paciente del caso.");
@@ -712,30 +1043,6 @@ export default function FollowupCaseloadPage() {
     } finally {
       setEducationLoading(false);
     }
-  }
-
-  function closeActionsModal() {
-    setActionsOpen(false);
-    setSelectedEventId(null);
-    setActions([]);
-    setActionsError(null);
-    setActionsLoading(false);
-
-    setEducation([]);
-    setEducationError(null);
-    setEducationLoading(false);
-    setNewEducationNote("");
-    setCreatingEducation(false);
-
-    setClosingEventId(null);
-    setClosingResolutionType(null);
-    setClosingNote("");
-    setConfirmingClose(false);
-
-    setNewActionType("WHATSAPP");
-    setNewOutcome("CONTACTED");
-    setNewNote("");
-    setCreatingAction(false);
   }
 
   async function onCreateAction() {
@@ -758,13 +1065,13 @@ export default function FollowupCaseloadPage() {
     setSuccessMessage(null);
 
     try {
-      const res = await createFollowupEventAction(selectedEventId, {
+      await createFollowupEventAction(selectedEventId, {
         actionType: newActionType,
         outcome: newOutcome,
         ...(noteTrimmed ? { note: noteTrimmed } : {}),
       });
 
-      setActions((prev) => [...prev, res.action]);
+      await loadHistoryTrace(selectedEventId);
       setNewNote("");
       setSuccessMessage("Acción registrada correctamente.");
     } catch (e: unknown) {
@@ -805,6 +1112,7 @@ export default function FollowupCaseloadPage() {
         ...prev,
       ]);
 
+      await loadHistoryTrace(selectedEvent.id);
       setNewEducationNote("");
       setSuccessMessage("Interacción educativa registrada correctamente.");
     } catch (e: unknown) {
@@ -818,327 +1126,90 @@ export default function FollowupCaseloadPage() {
 
   return (
     <div style={{ padding: 16 }}>
-      <div className="app-header" style={{ marginBottom: 12 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Seguimiento / Caseload</h1>
-          <p style={{ margin: "6px 0 0" }}>
-            Bandeja operativa de eventos, priorización por SLA y trazabilidad de
-            intervenciones.
-          </p>
-        </div>
-      </div>
+      {isPatientMode ? (
+        <PatientWorkspaceView
+          isWorkspacePanelOpen={isWorkspacePanelOpen}
+          onBackToCaseload={onBackToCaseload}
+          backButtonStyle={btnBase}
+          patientLoading={patientLoading}
+          patientError={patientError}
+          patientSummary={patientSummary}
+          initialPatientId={initialPatientId}
+          initialEventId={initialEventId}
+          patientContext={patientContext.data}
+          patientContextLoading={patientContext.loading}
+          patientContextError={patientContext.error}
+          status={status}
+          assigned={assigned}
+          sla={sla}
+          setStatus={setStatus}
+          setAssigned={setAssigned}
+          setSla={setSla}
+          loading={loading}
+          loadingMore={loadingMore}
+          error={error}
+          successMessage={successMessage}
+          visibleRows={visibleRows}
+          hasNext={hasNext}
+          currentUserEmail={currentUserEmail}
+          loadFirstPage={loadFirstPage}
+          loadMore={loadMore}
+          openActions={openActions}
+          isLockedForCurrentUser={isLockedForCurrentUser}
+          statusCellContent={statusCellContent}
+          eventLabel={eventLabel}
+          probableCauseLabel={probableCauseLabel}
+          categoryLabel={categoryLabel}
+          adherenceLabel={adherenceLabel}
+          adherencePillStyle={adherencePillStyle}
+          adherenceSecondaryLabel={adherenceSecondaryLabel}
+          severityPillStyle={severityPillStyle}
+          severityLabel={severityLabel}
+          PatientAvatar={PatientAvatar}
+          btnPrimary={btnPrimary}
+          btnBase={btnBase}
+        />
+      ) : (
+        <CaseloadGlobalView
+          status={status}
+          assigned={assigned}
+          sla={sla}
+          setStatus={setStatus}
+          setAssigned={setAssigned}
+          setSla={setSla}
+          loading={loading}
+          loadingMore={loadingMore}
+          error={error}
+          successMessage={successMessage}
+          visibleRows={visibleRows}
+          hasNext={hasNext}
+          currentUserEmail={currentUserEmail}
+          loadFirstPage={loadFirstPage}
+          loadMore={loadMore}
+          openActions={openActions}
+          isLockedForCurrentUser={isLockedForCurrentUser}
+          statusCellContent={statusCellContent}
+          eventLabel={eventLabel}
+          probableCauseLabel={probableCauseLabel}
+          categoryLabel={categoryLabel}
+          adherenceLabel={adherenceLabel}
+          adherencePillStyle={adherencePillStyle}
+          adherenceSecondaryLabel={adherenceSecondaryLabel}
+          severityPillStyle={severityPillStyle}
+          severityLabel={severityLabel}
+          PatientAvatar={PatientAvatar}
+          btnPrimary={btnPrimary}
+          btnBase={btnBase}
+        />
+      )}
 
-      <section
-        className="app-table"
-        style={{ padding: 16, marginTop: 0, boxShadow: "var(--shadow-card)" }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            marginBottom: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as FollowupEventStatus)}
-            style={{
-              padding: 8,
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            <option value="OPEN">Abiertos</option>
-            <option value="IN_PROGRESS">En curso</option>
-            <option value="ESCALATED">Escalados</option>
-            <option value="CLOSED">Cerrados</option>
-          </select>
-
-          <select
-            value={assigned}
-            onChange={(e) => setAssigned(e.target.value as FollowupAssigned)}
-            style={{
-              padding: 8,
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            <option value="any">Asignación: cualquiera</option>
-            <option value="me">Solo míos</option>
-            <option value="none">Sin asignar</option>
-          </select>
-
-          <select
-            value={sla}
-            onChange={(e) => setSla(e.target.value as FollowupSla)}
-            style={{
-              padding: 8,
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            <option value="any">SLA: cualquiera</option>
-            <option value="overdue">SLA vencido</option>
-            <option value="due_48h">SLA &lt; 48h</option>
-          </select>
-
-          <button
-            onClick={loadFirstPage}
-            disabled={loading || loadingMore}
-            style={btnPrimary}
-          >
-            Refrescar
-          </button>
-        </div>
-
-        {error && (
-          <div style={{ color: "crimson", marginBottom: 8 }}>{error}</div>
-        )}
-
-        {successMessage && (
-          <div
-            style={{
-              color: "#166534",
-              background: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              borderRadius: 12,
-              padding: "10px 12px",
-              marginBottom: 8,
-              fontWeight: 600,
-            }}
-          >
-            {successMessage}
-          </div>
-        )}
-
-        {loading && <div>Cargando…</div>}
-
-        {!loading && (
-          <>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th align="left">Paciente</th>
-                  <th align="left">Evento</th>
-                  <th align="left">Severidad</th>
-                  <th align="left">Estado</th>
-                  <th align="left">SLA</th>
-                  <th align="left">Acciones</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {rows.map((r) => {
-                  const lockedForCurrentUser = isLockedForCurrentUser(
-                    r,
-                    currentUserEmail,
-                  );
-
-                  return (
-                    <tr key={r.id} style={{ borderTop: "1px solid #e5e7eb" }}>
-                      <td style={{ padding: "10px 0" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            minWidth: 0,
-                          }}
-                        >
-                          <PatientAvatar
-                            fullName={r.patient.fullName}
-                            severity={r.severity}
-                          />
-
-                          <div style={{ minWidth: 0 }}>
-                            <div
-                              style={{
-                                fontWeight: 700,
-                                color: "#111827",
-                                lineHeight: 1.3,
-                              }}
-                            >
-                              {r.patient.fullName}
-                            </div>
-
-                            <div
-                              style={{
-                                fontSize: 12,
-                                color: "var(--color-text-muted, #6b7280)",
-                                marginTop: 2,
-                              }}
-                            >
-                              {r.patient.documentId}
-                              {r.patient.payerCode
-                                ? ` • ${r.patient.payerCode}`
-                                : ""}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td style={{ padding: "10px 0" }}>
-                        <div style={{ fontWeight: 600, color: "#111827" }}>
-                          {eventLabel(r)}
-                        </div>
-
-                        {probableCauseLabel(r) && (
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: "var(--color-text-muted, #6b7280)",
-                              marginTop: 4,
-                              lineHeight: 1.4,
-                              maxWidth: 420,
-                            }}
-                          >
-                            Posible causa: {probableCauseLabel(r)}
-                          </div>
-                        )}
-
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "var(--color-text-muted, #6b7280)",
-                            marginTop: 4,
-                          }}
-                        >
-                          {categoryLabel(r.category)}
-                        </div>
-
-                        <div style={{ marginTop: 8 }}>
-                          <span
-                            style={{
-                              ...adherencePillStyle(r),
-                              padding: "4px 10px",
-                              borderRadius: 999,
-                              fontSize: 12,
-                              fontWeight: 700,
-                              display: "inline-block",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {adherenceLabel(r)}
-                          </span>
-
-                          {adherenceSecondaryLabel(r) && (
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: 12,
-                                color: "#6b7280",
-                              }}
-                            >
-                              {adherenceSecondaryLabel(r)}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-
-                      <td style={{ padding: "10px 0" }}>
-                        <span
-                          style={{
-                            ...severityPillStyle(r.severity),
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 700,
-                            display: "inline-block",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {severityLabel(r.severity)}
-                        </span>
-                      </td>
-
-                      <td style={{ padding: "10px 0" }}>
-                        {statusCellContent(r)}
-                      </td>
-
-                      <td style={{ padding: "10px 0" }}>
-                        {r.slaDueAt
-                          ? new Date(r.slaDueAt).toLocaleString()
-                          : "-"}
-                      </td>
-
-                      <td style={{ padding: "10px 0" }}>
-                        {lockedForCurrentUser ? (
-                          <div
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 10,
-                              padding: "8px 12px",
-                              borderRadius: 999,
-                              border: "1px solid #d1d5db",
-                              background: "#f9fafb",
-                              color: "#6b7280",
-                              fontWeight: 600,
-                              fontSize: 14,
-                            }}
-                          >
-                            <span>
-                              {r.assignedTo
-                                ? `Ocupado por ${r.assignedTo.displayName}`
-                                : "Ocupado"}
-                            </span>
-
-                            <span style={{ color: "#9ca3af" }}>Gestionar</span>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => openActions(r.id)}
-                            style={btnPrimary}
-                          >
-                            {r.status === "CLOSED" ? "Ver" : "Gestionar"}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-
-                {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 12, color: "#6b7280" }}>
-                      No hay eventos para los filtros seleccionados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-
-            <div
-              style={{
-                marginTop: 12,
-                display: "flex",
-                gap: 12,
-                alignItems: "center",
-              }}
-            >
-              {hasNext ? (
-                <button
-                  onClick={loadMore}
-                  disabled={loadingMore || loading}
-                  style={btnBase}
-                >
-                  {loadingMore ? "Cargando…" : "Cargar más"}
-                </button>
-              ) : (
-                <div style={{ color: "#6b7280", fontSize: 12 }}>
-                  No hay más resultados.
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </section>
-
-      <InterventionPanel
+      <InterventionPanelContainer
         open={actionsOpen && Boolean(selectedEventId)}
         event={selectedEvent}
         onClose={closeActionsModal}
+        riskStratification={riskStratification}
+        riskLoading={riskLoading}
+        riskError={riskError}
         historyContent={
           actionsLoading ? (
             <div style={historyListStyle}>
@@ -1158,8 +1229,8 @@ export default function FollowupCaseloadPage() {
             </div>
           ) : (
             <div style={historyListStyle}>
-              {actions.map((a) => (
-                <div key={a.id} style={historyRowStyle}>
+              {historyTrace.map((entry) => (
+                <div key={entry.id} style={historyRowStyle}>
                   <div style={historyLeftColumnStyle}>
                     <div
                       style={{
@@ -1168,7 +1239,14 @@ export default function FollowupCaseloadPage() {
                         color: "#111827",
                       }}
                     >
-                      {ACTION_TYPE_LABEL[a.actionType] ?? a.actionType}
+                      {entry.kind === "ACTION"
+                        ? ACTION_TYPE_LABEL[
+                        (entry.sourceMeta?.actionType as FollowupEventActionType) ??
+                        "NOTE"
+                        ] ?? entry.title
+                        : entry.kind === "EDUCATION"
+                          ? "Interacción educativa"
+                          : entry.title}
                     </div>
 
                     <div
@@ -1178,20 +1256,27 @@ export default function FollowupCaseloadPage() {
                         lineHeight: 1.5,
                       }}
                     >
-                      {a.note ?? "Sin nota."}
+                      {entry.detail ?? "Sin detalle adicional."}
                     </div>
                   </div>
 
                   <div style={historyRightColumnStyle}>
-                    <div>{new Date(a.createdAt).toLocaleString()}</div>
-                    <div style={{ marginTop: 4 }}>
-                      {OUTCOME_LABEL[a.outcome] ?? a.outcome}
-                    </div>
+                    <div>{new Date(entry.occurredAt).toLocaleString()}</div>
+                    {entry.kind === "ACTION" && entry.sourceMeta?.outcome ? (
+                      <div style={{ marginTop: 4 }}>
+                        {OUTCOME_LABEL[
+                          entry.sourceMeta.outcome as FollowupEventActionOutcome
+                        ] ?? entry.sourceMeta.outcome}
+                      </div>
+                    ) : null}
+                    {entry.actor?.displayName ? (
+                      <div style={{ marginTop: 4 }}>{entry.actor.displayName}</div>
+                    ) : null}
                   </div>
                 </div>
               ))}
 
-              {actions.length === 0 && (
+              {historyTrace.length === 0 && (
                 <div style={historyRowStyle}>
                   <div style={historyLeftColumnStyle}>
                     <div
@@ -1201,7 +1286,7 @@ export default function FollowupCaseloadPage() {
                         color: "#111827",
                       }}
                     >
-                      Sin historial registrado
+                      Sin traza registrada
                     </div>
 
                     <div
@@ -1211,7 +1296,7 @@ export default function FollowupCaseloadPage() {
                         lineHeight: 1.5,
                       }}
                     >
-                      No hay acciones registradas para este evento.
+                      No hay hitos ni acciones registradas para este evento.
                     </div>
                   </div>
                 </div>
@@ -1412,40 +1497,42 @@ export default function FollowupCaseloadPage() {
           style={{
             borderTop:
               selectedEvent &&
-              !selectedEventLocked &&
-              selectedEvent.status !== "CLOSED" &&
-              closingEventId === selectedEvent.id
+                !selectedEventLocked &&
+                selectedEvent.status !== "CLOSED" &&
+                closingEventId === selectedEvent.id
                 ? "1px solid #e5e7eb"
                 : "none",
             paddingTop:
               selectedEvent &&
-              !selectedEventLocked &&
-              selectedEvent.status !== "CLOSED" &&
-              closingEventId === selectedEvent.id
+                !selectedEventLocked &&
+                selectedEvent.status !== "CLOSED" &&
+                closingEventId === selectedEvent.id
                 ? 14
                 : 0,
             marginTop:
               selectedEvent &&
-              !selectedEventLocked &&
-              selectedEvent.status !== "CLOSED" &&
-              closingEventId === selectedEvent.id
+                !selectedEventLocked &&
+                selectedEvent.status !== "CLOSED" &&
+                closingEventId === selectedEvent.id
                 ? 4
                 : 0,
           }}
         >
           <div style={{ ...sectionTitleStyle, marginBottom: 10 }}>Acciones</div>
 
-          <div
-            style={{
-              ...getSuggestionStyle(selectedEvent),
-              padding: 12,
-              borderRadius: 12,
-              marginBottom: 12,
-              fontSize: 13,
-            }}
-          >
-            {getActionSuggestionText(selectedEvent)}
-          </div>
+          {selectedEvent?.status !== "CLOSED" ? (
+            <div
+              style={{
+                ...getSuggestionStyle(selectedEvent),
+                padding: 12,
+                borderRadius: 12,
+                marginBottom: 12,
+                fontSize: 13,
+              }}
+            >
+              {getActionSuggestionText(selectedEvent)}
+            </div>
+          ) : null}
 
           {selectedEvent && selectedEvent.status === "CLOSED" && (
             <div
@@ -1492,241 +1579,253 @@ export default function FollowupCaseloadPage() {
             </div>
           )}
 
-          <div
-            style={{
-              display: "grid",
-              gap: 14,
-              marginBottom: 16,
-            }}
-          >
+          {selectedEvent?.status === "CLOSED" ? (
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
+                background: "#f8fafc",
+                border: "1px solid #dbeafe",
+                borderRadius: 12,
+                padding: 12,
+                color: "#334155",
+                fontSize: 13,
+                lineHeight: 1.6,
               }}
             >
-              <div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#6b7280",
-                    marginBottom: 6,
-                    fontWeight: 600,
-                  }}
-                >
-                  Tipo de acción
-                </div>
-                <select
-                  value={newActionType}
-                  onChange={(e) =>
-                    setNewActionType(e.target.value as FollowupEventActionType)
-                  }
-                  disabled={
-                    selectedEventLocked ||
-                    creatingAction ||
-                    actionsLoading ||
-                    selectedEvent?.status === "CLOSED" ||
-                    takingEventId === selectedEvent?.id ||
-                    closingEventId === selectedEvent?.id ||
-                    confirmingClose
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 12,
-                    border: "1px solid #e5e7eb",
-                    background: "#ffffff",
-                  }}
-                >
-                  {(
-                    Object.keys(ACTION_TYPE_LABEL) as FollowupEventActionType[]
-                  ).map((k) => (
-                    <option key={k} value={k}>
-                      {ACTION_TYPE_LABEL[k]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#6b7280",
-                    marginBottom: 6,
-                    fontWeight: 600,
-                  }}
-                >
-                  Resultado
-                </div>
-                <select
-                  value={newOutcome}
-                  onChange={(e) =>
-                    setNewOutcome(e.target.value as FollowupEventActionOutcome)
-                  }
-                  disabled={
-                    selectedEventLocked ||
-                    creatingAction ||
-                    actionsLoading ||
-                    selectedEvent?.status === "CLOSED" ||
-                    takingEventId === selectedEvent?.id ||
-                    closingEventId === selectedEvent?.id ||
-                    confirmingClose
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 12,
-                    border: "1px solid #e5e7eb",
-                    background: "#ffffff",
-                  }}
-                >
-                  {(
-                    Object.keys(OUTCOME_LABEL) as FollowupEventActionOutcome[]
-                  ).map((k) => (
-                    <option key={k} value={k}>
-                      {OUTCOME_LABEL[k]}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              Este caso ya quedó cerrado. La traza operativa de arriba resume lo ocurrido y no se permiten nuevas acciones ni educación sobre este evento.
             </div>
-
-            <div>
+          ) : (
+            <>
               <div
                 style={{
-                  fontSize: 12,
-                  color: "#6b7280",
-                  marginBottom: 6,
-                  fontWeight: 600,
+                  display: "grid",
+                  gap: 14,
+                  marginBottom: 16,
                 }}
               >
-                Nota (opcional)
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#6b7280",
+                        marginBottom: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Tipo de acción
+                    </div>
+                    <select
+                      value={newActionType}
+                      onChange={(e) =>
+                        setNewActionType(e.target.value as FollowupEventActionType)
+                      }
+                      disabled={
+                        selectedEventLocked ||
+                        creatingAction ||
+                        actionsLoading ||
+                        takingEventId === selectedEvent?.id ||
+                        closingEventId === selectedEvent?.id ||
+                        confirmingClose
+                      }
+                      style={{
+                        width: "100%",
+                        padding: 10,
+                        borderRadius: 12,
+                        border: "1px solid #e5e7eb",
+                        background: "#ffffff",
+                      }}
+                    >
+                      {(
+                        Object.keys(ACTION_TYPE_LABEL) as FollowupEventActionType[]
+                      ).map((k) => (
+                        <option key={k} value={k}>
+                          {ACTION_TYPE_LABEL[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#6b7280",
+                        marginBottom: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Resultado
+                    </div>
+                    <select
+                      value={newOutcome}
+                      onChange={(e) =>
+                        setNewOutcome(e.target.value as FollowupEventActionOutcome)
+                      }
+                      disabled={
+                        selectedEventLocked ||
+                        creatingAction ||
+                        actionsLoading ||
+                        takingEventId === selectedEvent?.id ||
+                        closingEventId === selectedEvent?.id ||
+                        confirmingClose
+                      }
+                      style={{
+                        width: "100%",
+                        padding: 10,
+                        borderRadius: 12,
+                        border: "1px solid #e5e7eb",
+                        background: "#ffffff",
+                      }}
+                    >
+                      {(
+                        Object.keys(OUTCOME_LABEL) as FollowupEventActionOutcome[]
+                      ).map((k) => (
+                        <option key={k} value={k}>
+                          {OUTCOME_LABEL[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#6b7280",
+                      marginBottom: 6,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Nota (opcional)
+                  </div>
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Ej: Se contacta por WhatsApp, confirma retiro mañana."
+                    style={{
+                      width: "100%",
+                      minHeight: 96,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: "1px solid #e5e7eb",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                    }}
+                    disabled={
+                      selectedEventLocked ||
+                      creatingAction ||
+                      actionsLoading ||
+                      takingEventId === selectedEvent?.id ||
+                      closingEventId === selectedEvent?.id ||
+                      confirmingClose
+                    }
+                  />
+                </div>
+
+                <div>
+                  <button
+                    onClick={onCreateAction}
+                    disabled={
+                      selectedEventLocked ||
+                      creatingAction ||
+                      actionsLoading ||
+                      takingEventId === selectedEvent?.id ||
+                      closingEventId === selectedEvent?.id ||
+                      confirmingClose
+                    }
+                    style={btnPrimary}
+                  >
+                    {creatingAction ? "Guardando…" : "Agregar acción"}
+                  </button>
+                </div>
               </div>
+
+              <div style={{ ...sectionTitleStyle, marginTop: 16 }}>
+                Educación al paciente
+              </div>
+
+              {educationError && (
+                <div style={{ color: "crimson", marginBottom: 10 }}>
+                  {educationError}
+                </div>
+              )}
+
+              <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+                {educationLoading ? (
+                  <div style={{ fontSize: 13, color: "#6b7280" }}>
+                    Cargando educación...
+                  </div>
+                ) : education.length === 0 ? (
+                  <div style={{ fontSize: 13, color: "#6b7280" }}>
+                    Sin interacciones educativas.
+                  </div>
+                ) : (
+                  education.map((item) => (
+                    <div key={item.id} style={historyRowStyle}>
+                      <div style={historyLeftColumnStyle}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>
+                          Interacción educativa
+                        </div>
+                        <div style={{ fontSize: 13 }}>{item.note}</div>
+                      </div>
+
+                      <div style={historyRightColumnStyle}>
+                        {new Date(item.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
               <textarea
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                placeholder="Ej: Se contacta por WhatsApp, confirma retiro mañana."
+                value={newEducationNote}
+                onChange={(e) => setNewEducationNote(e.target.value)}
+                placeholder="Registrar intervención educativa..."
                 style={{
                   width: "100%",
-                  minHeight: 96,
-                  padding: 12,
+                  minHeight: 80,
+                  padding: 10,
                   borderRadius: 12,
                   border: "1px solid #e5e7eb",
+                  marginBottom: 8,
                   resize: "vertical",
                   fontFamily: "inherit",
                 }}
                 disabled={
                   selectedEventLocked ||
-                  creatingAction ||
-                  actionsLoading ||
-                  selectedEvent?.status === "CLOSED" ||
+                  creatingEducation ||
+                  educationLoading ||
                   takingEventId === selectedEvent?.id ||
                   closingEventId === selectedEvent?.id ||
                   confirmingClose
                 }
               />
-            </div>
 
-            <div>
               <button
-                onClick={onCreateAction}
+                onClick={onCreateEducation}
                 disabled={
                   selectedEventLocked ||
-                  creatingAction ||
-                  actionsLoading ||
-                  selectedEvent?.status === "CLOSED" ||
+                  creatingEducation ||
+                  educationLoading ||
                   takingEventId === selectedEvent?.id ||
                   closingEventId === selectedEvent?.id ||
                   confirmingClose
                 }
                 style={btnPrimary}
               >
-                {creatingAction ? "Guardando…" : "Agregar acción"}
+                {creatingEducation ? "Guardando…" : "Registrar educación"}
               </button>
-            </div>
-          </div>
-
-          <div style={{ ...sectionTitleStyle, marginTop: 16 }}>
-            Educación al paciente
-          </div>
-
-          {educationError && (
-            <div style={{ color: "crimson", marginBottom: 10 }}>
-              {educationError}
-            </div>
+            </>
           )}
-
-          <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-            {educationLoading ? (
-              <div style={{ fontSize: 13, color: "#6b7280" }}>
-                Cargando educación...
-              </div>
-            ) : education.length === 0 ? (
-              <div style={{ fontSize: 13, color: "#6b7280" }}>
-                Sin interacciones educativas.
-              </div>
-            ) : (
-              education.map((item) => (
-                <div key={item.id} style={historyRowStyle}>
-                  <div style={historyLeftColumnStyle}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>
-                      Interacción educativa
-                    </div>
-                    <div style={{ fontSize: 13 }}>{item.note}</div>
-                  </div>
-
-                  <div style={historyRightColumnStyle}>
-                    {new Date(item.createdAt).toLocaleString()}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <textarea
-            value={newEducationNote}
-            onChange={(e) => setNewEducationNote(e.target.value)}
-            placeholder="Registrar intervención educativa..."
-            style={{
-              width: "100%",
-              minHeight: 80,
-              padding: 10,
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              marginBottom: 8,
-              resize: "vertical",
-              fontFamily: "inherit",
-            }}
-            disabled={
-              selectedEventLocked ||
-              creatingEducation ||
-              educationLoading ||
-              selectedEvent?.status === "CLOSED" ||
-              takingEventId === selectedEvent?.id ||
-              closingEventId === selectedEvent?.id ||
-              confirmingClose
-            }
-          />
-
-          <button
-            onClick={onCreateEducation}
-            disabled={
-              selectedEventLocked ||
-              creatingEducation ||
-              educationLoading ||
-              selectedEvent?.status === "CLOSED" ||
-              takingEventId === selectedEvent?.id ||
-              closingEventId === selectedEvent?.id ||
-              confirmingClose
-            }
-            style={btnPrimary}
-          >
-            {creatingEducation ? "Guardando…" : "Registrar educación"}
-          </button>
         </div>
-      </InterventionPanel>
+      </InterventionPanelContainer>
     </div>
   );
 }
