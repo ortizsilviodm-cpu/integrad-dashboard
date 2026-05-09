@@ -3,13 +3,20 @@
 import React, { useState } from "react";
 import {
   enrollChronicPatient,
+  type EnrollmentDiabetesSetup,
   type EnrollmentRequest,
   type EnrollmentResponse,
 } from "../api/patientEnrollment";
 import {
   saveClinicalIndicators,
+  type ClinicalIndicatorType,
   type SaveClinicalIndicatorsRequest,
 } from "../api/clinicalIndicators";
+import { getAuthToken } from "../store/authStore";
+import {
+  defaultEnrollmentDiabetesSetup,
+  normalizeEnrollmentDiabetesSetup,
+} from "../logic/patientEnrollment.logic";
 
 /**
  * 🧩 IntegraD — Enrolamiento Paciente Crónico (Diabetes)
@@ -21,39 +28,10 @@ import {
  * - Usa estilos coherentes con el Dashboard (card .app-table).
  */
 
-/* ------------------------------------------ */
-/* Auth — Fuente única (compatibilidad rápida) */
-/* ------------------------------------------ */
-/**
- * El login hoy guarda el token en sessionStorage (integrad_access_token),
- * pero algunos módulos API lo buscan en localStorage.
- *
- * Fix Sprint 54A: antes de llamar APIs, aseguramos que el token exista y
- * lo espejamos a localStorage para no romper el resto del stack.
- */
-const ACCESS_TOKEN_KEY = "integrad_access_token";
-
-function getAccessToken(): string | null {
-  const fromSession = sessionStorage.getItem(ACCESS_TOKEN_KEY);
-  if (fromSession && fromSession.trim()) return fromSession.trim();
-
-  const fromLocal = localStorage.getItem(ACCESS_TOKEN_KEY);
-  if (fromLocal && fromLocal.trim()) return fromLocal.trim();
-
-  return null;
-}
-
 function ensureTokenAvailableOrThrow(): string {
-  const token = getAccessToken();
+  const token = getAuthToken();
   if (!token) {
     throw new Error("No hay token de autenticación. Inicie sesión nuevamente.");
-  }
-
-  // Compatibilidad: si el token está en sessionStorage, espejarlo a localStorage.
-  // (Esto evita que módulos legacy que leen localStorage fallen.)
-  const inLocal = localStorage.getItem(ACCESS_TOKEN_KEY);
-  if (!inLocal || !inLocal.trim()) {
-    localStorage.setItem(ACCESS_TOKEN_KEY, token);
   }
 
   return token;
@@ -242,7 +220,16 @@ const defaultEnrollmentForm: EnrollmentRequest = {
     mainProvider: "",
     notes: "",
   },
+  diabetesSetup: defaultEnrollmentDiabetesSetup,
 };
+
+type EditableEnrollmentSection = "personal" | "coverage" | "appUser" | "program";
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : fallback;
+}
 
 const PatientEnrollmentPage: React.FC = () => {
   const [form, setForm] = useState<EnrollmentRequest>(defaultEnrollmentForm);
@@ -254,28 +241,36 @@ const PatientEnrollmentPage: React.FC = () => {
   const [success, setSuccess] = useState<EnrollmentResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [clinicalError, setClinicalError] = useState<string | null>(null);
+  const diabetesSetup =
+    form.diabetesSetup ?? defaultEnrollmentDiabetesSetup;
+  const isDeferredSetup = diabetesSetup.completionState === "DEFERRED";
+  const showInsulinMode =
+    diabetesSetup.completionState === "COMPLETE" &&
+    diabetesSetup.usesInsulin === true;
 
   function handleChange(
-    section: keyof EnrollmentRequest,
+    section: EditableEnrollmentSection,
     field: string,
     value: string
   ) {
     setForm((prev) => {
-      const clone: any = { ...prev };
-
       if (section === "personal" || section === "coverage") {
-        clone[section] = {
-          ...clone[section],
-          [field]: value,
-        };
-      } else if (section === "appUser" || section === "program") {
-        clone[section] = {
-          ...(clone[section] ?? {}),
-          [field]: value,
+        return {
+          ...prev,
+          [section]: {
+            ...prev[section],
+            [field]: value,
+          },
         };
       }
 
-      return clone;
+      return {
+        ...prev,
+        [section]: {
+          ...(prev[section] ?? {}),
+          [field]: value,
+        },
+      };
     });
   }
 
@@ -286,12 +281,54 @@ const PatientEnrollmentPage: React.FC = () => {
     }));
   }
 
+  function updateDiabetesSetup(next: Partial<EnrollmentDiabetesSetup>) {
+    setForm((prev) => ({
+      ...prev,
+      diabetesSetup: {
+        ...(prev.diabetesSetup ?? defaultEnrollmentDiabetesSetup),
+        ...next,
+      },
+    }));
+  }
+
+  function handleCompletionStateChange(value: "COMPLETE" | "DEFERRED") {
+    if (value === "DEFERRED") {
+      updateDiabetesSetup({
+        completionState: "DEFERRED",
+        diabetesType: null,
+        usesInsulin: null,
+        insulinMode: null,
+      });
+      return;
+    }
+
+    updateDiabetesSetup({
+      completionState: "COMPLETE",
+      usesInsulin: null,
+      insulinMode: null,
+    });
+  }
+
+  function handleUsesInsulinChange(rawValue: string) {
+    if (rawValue === "true") {
+      updateDiabetesSetup({ usesInsulin: true, insulinMode: "UNKNOWN" });
+      return;
+    }
+
+    if (rawValue === "false") {
+      updateDiabetesSetup({ usesInsulin: false, insulinMode: "NONE" });
+      return;
+    }
+
+    updateDiabetesSetup({ usesInsulin: null, insulinMode: null });
+  }
+
   // Construye el payload de indicadores clínicos a partir del formulario local
   const buildClinicalIndicatorsPayload = (): SaveClinicalIndicatorsRequest => {
     const indicators: SaveClinicalIndicatorsRequest["indicators"] = [];
     const nowIso = new Date().toISOString();
 
-    const pushNumeric = (value: string, type: string, unit?: string) => {
+    const pushNumeric = (value: string, type: ClinicalIndicatorType, unit?: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
 
@@ -299,7 +336,7 @@ const PatientEnrollmentPage: React.FC = () => {
       if (Number.isNaN(num)) return;
 
       indicators.push({
-        type: type as any,
+        type,
         valueNumeric: num,
         unit: unit ?? null,
         takenAt: nowIso,
@@ -307,12 +344,12 @@ const PatientEnrollmentPage: React.FC = () => {
       });
     };
 
-    const pushText = (value: string, type: string, unit?: string) => {
+    const pushText = (value: string, type: ClinicalIndicatorType, unit?: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
 
       indicators.push({
-        type: type as any,
+        type,
         valueText: trimmed,
         unit: unit ?? null,
         takenAt: nowIso,
@@ -364,6 +401,21 @@ const PatientEnrollmentPage: React.FC = () => {
     setClinicalError(null);
     setSuccess(null);
 
+    const normalizedDiabetesSetup = normalizeEnrollmentDiabetesSetup(
+      form.diabetesSetup,
+    );
+
+    if (
+      normalizedDiabetesSetup.completionState === "COMPLETE" &&
+      form.diabetesSetup?.usesInsulin == null
+    ) {
+      setLoading(false);
+      setError(
+        "Para setup completo, definí si usa insulina o marcá la opción 'diferir setup'.",
+      );
+      return;
+    }
+
     const payload: EnrollmentRequest = {
       ...form,
       appUser:
@@ -372,6 +424,7 @@ const PatientEnrollmentPage: React.FC = () => {
         form.program && (form.program.mainProvider || form.program.notes)
           ? form.program
           : undefined,
+      diabetesSetup: normalizedDiabetesSetup,
     };
 
     try {
@@ -397,7 +450,7 @@ const PatientEnrollmentPage: React.FC = () => {
           // ✅ Garantizar token también para el POST de indicadores
           ensureTokenAvailableOrThrow();
           await saveClinicalIndicators(response.patient.id, indicatorsPayload);
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error("Error guardando ficha clínica inicial:", err);
           setClinicalError(
             "El enrolamiento se guardó, pero hubo un problema guardando la ficha clínica inicial."
@@ -407,11 +460,9 @@ const PatientEnrollmentPage: React.FC = () => {
 
       // 3) Tras éxito, limpiamos los formularios para permitir nuevas altas
       resetFormsAfterSuccess();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error enrolando paciente crónico:", err);
-      setError(
-        err?.message ?? "No se pudo enrolar el paciente. Intente nuevamente."
-      );
+      setError(getErrorMessage(err, "No se pudo enrolar el paciente. Intente nuevamente."));
     } finally {
       setLoading(false);
     }
@@ -523,7 +574,7 @@ const PatientEnrollmentPage: React.FC = () => {
                 type="text"
                 placeholder="M / F / X, etc."
                 style={getInputStyle("gender")}
-                value={(form as any).personal?.gender ?? ""}
+                value={form.personal.gender ?? ""}
                 onFocus={() => setFocusedField("gender")}
                 onBlur={() => setFocusedField(null)}
                 onChange={(e) =>
@@ -668,6 +719,106 @@ const PatientEnrollmentPage: React.FC = () => {
                   handleChange("program", "notes", e.target.value)
                 }
               />
+            </div>
+          </fieldset>
+
+          <fieldset style={fieldsetStyle}>
+            <legend style={legendStyle}>Setup de diabetes (V1)</legend>
+
+            <div style={groupStyle}>
+              <label style={labelStyle}>Decisión de setup inicial</label>
+              <select
+                style={getInputStyle("diabetesSetupCompletionState")}
+                value={diabetesSetup.completionState}
+                onFocus={() => setFocusedField("diabetesSetupCompletionState")}
+                onBlur={() => setFocusedField(null)}
+                onChange={(e) =>
+                  handleCompletionStateChange(
+                    e.target.value as "COMPLETE" | "DEFERRED",
+                  )
+                }
+              >
+                <option value="DEFERRED">Diferir setup (opción segura V1)</option>
+                <option value="COMPLETE">Completar setup ahora</option>
+              </select>
+              <span style={helperStyle}>
+                Si el equipo aún no confirma todos los datos, se persiste
+                estado explícito DEFERRED sin asumir no-insulina.
+              </span>
+            </div>
+
+            <div style={groupStyle}>
+              <label style={labelStyle}>Tipo de diabetes</label>
+              <select
+                style={getInputStyle("diabetesType")}
+                value={diabetesSetup.diabetesType ?? ""}
+                disabled={isDeferredSetup}
+                onFocus={() => setFocusedField("diabetesType")}
+                onBlur={() => setFocusedField(null)}
+                onChange={(e) =>
+                  updateDiabetesSetup({
+                    diabetesType: e.target.value
+                      ? (e.target.value as "T1" | "T2" | "OTHER")
+                      : null,
+                  })
+                }
+              >
+                <option value="">Sin especificar</option>
+                <option value="T1">T1</option>
+                <option value="T2">T2</option>
+                <option value="OTHER">Otro</option>
+              </select>
+            </div>
+
+            <div style={groupStyle}>
+              <label style={labelStyle}>¿Usa insulina?</label>
+              <select
+                style={getInputStyle("usesInsulin")}
+                value={
+                  diabetesSetup.usesInsulin == null
+                    ? ""
+                    : diabetesSetup.usesInsulin
+                      ? "true"
+                      : "false"
+                }
+                disabled={isDeferredSetup}
+                onFocus={() => setFocusedField("usesInsulin")}
+                onBlur={() => setFocusedField(null)}
+                onChange={(e) => handleUsesInsulinChange(e.target.value)}
+              >
+                <option value="">Seleccionar</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+
+            <div style={groupStyle}>
+              <label style={labelStyle}>Modo de insulina</label>
+              <select
+                style={getInputStyle("insulinMode")}
+                value={diabetesSetup.insulinMode ?? ""}
+                disabled={!showInsulinMode}
+                onFocus={() => setFocusedField("insulinMode")}
+                onBlur={() => setFocusedField(null)}
+                onChange={(e) =>
+                  updateDiabetesSetup({
+                    insulinMode: e.target.value
+                      ? (e.target.value as
+                          | "UNKNOWN"
+                          | "BASAL"
+                          | "BASAL_BOLUS"
+                          | "MIXED"
+                          | "PUMP")
+                      : "UNKNOWN",
+                  })
+                }
+              >
+                <option value="UNKNOWN">No definido</option>
+                <option value="BASAL">Basal</option>
+                <option value="BASAL_BOLUS">Basal-bolus</option>
+                <option value="MIXED">Mezcla</option>
+                <option value="PUMP">Bomba</option>
+              </select>
             </div>
           </fieldset>
 

@@ -3,23 +3,20 @@
 import { API_URL } from "../config/api";
 import { getAuthToken } from "../store/authStore";
 
-const ACCESS_TOKEN_KEY = "integrad_access_token";
-
-function getTokenFallback(): string | null {
-  // 1) Token desde authStore (si está bien implementado en otras pantallas)
-  const storeToken = getAuthToken?.();
-  if (storeToken && String(storeToken).trim()) return String(storeToken).trim();
-
-  // 2) Token real del dashboard (según tu evidencia)
-  const s = sessionStorage.getItem(ACCESS_TOKEN_KEY);
-  if (s && s.trim()) return s.trim();
-
-  // 3) Fallback (por si lo copiaron a localStorage)
-  const l = localStorage.getItem(ACCESS_TOKEN_KEY);
-  if (l && l.trim()) return l.trim();
-
-  return null;
-}
+export type EnrollmentDiabetesSetup = {
+  completionState: "COMPLETE" | "DEFERRED";
+  diabetesType: "T1" | "T2" | "OTHER" | null;
+  usesInsulin: boolean | null;
+  insulinMode:
+    | "NONE"
+    | "BASAL"
+    | "BASAL_BOLUS"
+    | "MIXED"
+    | "PUMP"
+    | "UNKNOWN"
+    | null;
+  source?: "PROFESSIONAL" | "PATIENT" | "INTEGRATION";
+};
 
 export interface EnrollmentRequest {
   personal: {
@@ -44,6 +41,7 @@ export interface EnrollmentRequest {
     mainProvider?: string;
     notes?: string;
   };
+  diabetesSetup?: EnrollmentDiabetesSetup;
 }
 
 export interface EnrollmentResponse {
@@ -72,6 +70,10 @@ export interface EnrollmentResponse {
   };
 }
 
+type EnrollmentErrorResponse = {
+  error?: string | Record<string, unknown> | null;
+};
+
 /**
  * Llama al endpoint de enrolamiento de paciente crónico (diabetes).
  * Requiere token de profesional/admin.
@@ -79,7 +81,7 @@ export interface EnrollmentResponse {
 export async function enrollChronicPatient(
   payload: EnrollmentRequest
 ): Promise<EnrollmentResponse> {
-  const token = getTokenFallback();
+  const token = getAuthToken();
   if (!token) {
     throw new Error("No hay token de autenticación. Inicie sesión nuevamente.");
   }
@@ -94,9 +96,9 @@ export async function enrollChronicPatient(
   });
 
   if (!resp.ok) {
-    let errorBody: any = null;
+    let errorBody: EnrollmentErrorResponse | null = null;
     try {
-      errorBody = await resp.json();
+      errorBody = (await resp.json()) as EnrollmentErrorResponse;
     } catch {
       // ignorar
     }
