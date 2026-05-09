@@ -1,6 +1,6 @@
 /* integrad-dashboard/src/App.tsx */
 
-import { useEffect, useMemo, useState, createContext, useContext } from "react";
+import { useEffect, useMemo, useState, createContext } from "react";
 import "./App.css";
 
 //  NUEVO: Auth Keycloak (Sprint 53)
@@ -45,14 +45,10 @@ export interface User {
   specialty: string;
 }
 
-// ---------------------------------------------------------------------
-// Auth Context (compatibilidad interna del Dashboard)
-// ---------------------------------------------------------------------
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isReady: boolean;
-  // login queda “noop” porque LoginPage dispara Keycloak directamente
   login: (_token: string) => void;
   logout: () => void;
 }
@@ -65,11 +61,6 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
 });
 
-export const useAuth = () => useContext(AuthContext);
-
-// ---------------------------------------------------------------------
-// Helpers: leer info mínima desde el JWT (sin validar firma, solo UI)
-// ---------------------------------------------------------------------
 type JwtPayload = {
   sub?: string;
   name?: string;
@@ -121,10 +112,6 @@ function mapTokenToUser(token: string | null): User | null {
 function roleLabel(role: User["role"]): string {
   return role === "admin" ? "Administrador" : "Profesional";
 }
-
-/* ------------------------------ */
-/* Styles (unificados con TOKENS) */
-/* ------------------------------ */
 
 const TOPBAR_STYLE: React.CSSProperties = {
   display: "flex",
@@ -226,15 +213,23 @@ const CASELOAD_TEST_BUTTON_STYLE: React.CSSProperties = {
 };
 
 function App() {
-  // ✅ Auth desde Keycloak Provider
   const kc = useKeycloakAuth();
 
-  const [activeSection, setActiveSection] = useState<
-    SectionKey | "caseload"
-  >("dashboard");
+  const [activeSection, setActiveSection] = useState<SectionKey | "caseload">(
+    "dashboard"
+  );
+  const [followupInitialEventId, setFollowupInitialEventId] = useState<
+    string | null
+  >(null);
+  const [followupInitialCaseSummary, setFollowupInitialCaseSummary] = useState<
+    string | null
+  >(null);
+  const [followupInitialPatientId, setFollowupInitialPatientId] = useState<
+    string | null
+  >(null);
 
-  // Accessibility: global font scale (1 = 100%)
   const [fontScale, setFontScale] = useState<number>(1);
+  const [caseloadViewKey, setCaseloadViewKey] = useState<number>(0);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--font-scale", String(fontScale));
@@ -248,22 +243,61 @@ function App() {
 
   const fontScalePercentage = Math.round(fontScale * 100);
 
-  // User mínimo desde el token (para topbar)
   const user = useMemo(() => mapTokenToUser(kc.token), [kc.token]);
+
+  function resetFollowupContext() {
+    setFollowupInitialPatientId(null);
+    setFollowupInitialEventId(null);
+    setFollowupInitialCaseSummary(null);
+  }
 
   const authContextValue: AuthContextType = {
     user,
     isAuthenticated: kc.isAuthenticated,
-    // No tenemos “ready” explícito; el provider hace init al cargar
     isReady: true,
     login: () => {},
     logout: () => {
       setActiveSection("dashboard");
+      resetFollowupContext();
       kc.logout();
     },
   };
 
-  // Si no está autenticado → LoginPage (Keycloak)
+  function handleOpenCaseloadWorkspace(input: {
+    patientId: string;
+    followupEventId?: string | null;
+    caseSummary?: string | null;
+  }) {
+    setFollowupInitialPatientId(input.patientId);
+    setFollowupInitialEventId(input.followupEventId ?? null);
+    setFollowupInitialCaseSummary(input.caseSummary ?? null);
+    setActiveSection("followup");
+  }
+
+  function handleSelectSection(section: SectionKey) {
+    resetFollowupContext();
+
+    if (section === "followup") {
+      handleOpenCaseload();
+      return;
+    }
+
+    setActiveSection(section);
+  }
+
+  function handleOpenCaseload() {
+    resetFollowupContext();
+    setCaseloadViewKey((prev) => prev + 1);
+    setActiveSection("caseload");
+
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 0);
+  }
+
+  const sidebarActiveSection: SectionKey =
+    activeSection === "caseload" ? "followup" : activeSection;
+
   if (!kc.isAuthenticated) {
     return <LoginPage />;
   }
@@ -285,8 +319,8 @@ function App() {
     <AuthContext.Provider value={authContextValue}>
       <div className="app-root">
         <Sidebar
-          activeSection={activeSection as SectionKey}
-          onSelect={setActiveSection as (section: SectionKey) => void}
+          activeSection={sidebarActiveSection}
+          onSelect={handleSelectSection}
         />
 
         <main className="app-main">
@@ -317,7 +351,10 @@ function App() {
 
               {DEMO_MODE && (
                 <button
-                  onClick={() => setActiveSection("economicsDemo")}
+                  onClick={() => {
+                    resetFollowupContext();
+                    setActiveSection("economicsDemo");
+                  }}
                   style={DEMO_BUTTON_STYLE}
                 >
                   Impacto Económico
@@ -357,15 +394,30 @@ function App() {
             {activeSection === "settings" && <SettingsView />}
             {activeSection === "iaPredictiva" && <IAPredictivaPage />}
             {activeSection === "economicsDemo" && <EconomicsDemoView />}
-            {activeSection === "followup" && <FollowupCaseloadPage />}
+
+            {activeSection === "followup" && (
+              <FollowupCaseloadPage
+                initialPatientId={followupInitialPatientId}
+                initialEventId={followupInitialEventId}
+                initialCaseSummary={followupInitialCaseSummary}
+                onBackToCaseload={handleOpenCaseload}
+              />
+            )}
+
             {activeSection === "educators" && <EducatorsPage />}
-            {activeSection === "caseload" && <CaseloadPage />}
+
+            {activeSection === "caseload" && (
+              <CaseloadPage
+                key={caseloadViewKey}
+                onOpenWorkspace={handleOpenCaseloadWorkspace}
+              />
+            )}
           </div>
 
           <button
             type="button"
             style={CASELOAD_TEST_BUTTON_STYLE}
-            onClick={() => setActiveSection("caseload")}
+            onClick={handleOpenCaseload}
           >
             Ver Caseload
           </button>

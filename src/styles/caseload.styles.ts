@@ -163,6 +163,17 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     lineHeight: 1.4,
   },
+  activeStatusBox: {
+    display: "inline-block",
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    color: "#1d4ed8",
+    borderRadius: 12,
+    padding: "8px 10px",
+    fontSize: 12,
+    fontWeight: 700,
+    lineHeight: 1.4,
+  },
   availableText: {
     fontSize: 13,
     color: "#166534",

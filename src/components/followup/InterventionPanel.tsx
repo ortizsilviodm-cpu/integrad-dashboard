@@ -1,7 +1,13 @@
 /* integrad-dashboard\src\components\followup\InterventionPanel.tsx */
 
 import { useState, type CSSProperties, type ReactNode } from "react";
-import type { FollowupEventRow, FollowupEventStatus } from "../../api/followup";
+import type {
+  FollowupEventRow,
+  FollowupEventStatus,
+  RiskStratificationPriorityHint,
+  RiskStratificationSourceType,
+  RiskStratificationV1,
+} from "../../api/followup";
 import { usePatientContext } from "../../hooks/usePatientContext";
 import { usePatientTimeline } from "../../hooks/usePatientTimeline";
 import {
@@ -23,6 +29,9 @@ type InterventionPanelProps = {
   open: boolean;
   event: FollowupEventRow | null;
   onClose: () => void;
+  riskStratification?: RiskStratificationV1 | null;
+  riskLoading?: boolean;
+  riskError?: string | null;
   children?: ReactNode;
   historyContent?: ReactNode;
 };
@@ -39,7 +48,8 @@ const TIMELINE_PREVIEW_LIMIT = 5;
 const overlayStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(15, 23, 42, 0.22)",
+  background: "rgba(15, 23, 42, 0.48)",
+  backdropFilter: "blur(8px)",
   zIndex: 9998,
 };
 
@@ -47,11 +57,12 @@ const panelStyle: CSSProperties = {
   position: "fixed",
   top: 0,
   right: 0,
-  width: "min(1400px, 100vw)",
+  width: "calc(100vw - 84px)",
+  maxWidth: "none",
   height: "100vh",
   background: "#f8fafc",
   borderLeft: "1px solid #e5e7eb",
-  boxShadow: "-16px 0 36px rgba(15, 23, 42, 0.16)",
+  boxShadow: "-24px 0 56px rgba(15, 23, 42, 0.28)",
   zIndex: 9999,
   display: "flex",
   flexDirection: "column",
@@ -220,6 +231,49 @@ const timelineFooterNoteStyle: CSSProperties = {
   color: "#6b7280",
 };
 
+const riskCardStyle: CSSProperties = {
+  ...sectionCardStyle,
+  background: "#f8fafc",
+};
+
+const riskGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 18,
+  alignItems: "start",
+};
+
+const pillBaseStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const riskMetaGridStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  fontSize: 13,
+  color: "#374151",
+  lineHeight: 1.5,
+};
+
+const riskListStyle: CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const riskListRowStyle: CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #e5e7eb",
+  background: "#ffffff",
+  display: "grid",
+  gap: 6,
+};
+
 function getSeverityPillStyle(raw: string): CSSProperties {
   const value = String(raw || "").toUpperCase().trim();
 
@@ -350,10 +404,159 @@ function getTimelineTypeStyle(type: "EVENT" | "INDICATOR"): CSSProperties {
   };
 }
 
+function getRiskBandLabel(value: string): string {
+  const normalized = String(value || "").toUpperCase().trim();
+
+  if (normalized === "LOW") return "Bajo";
+  if (normalized === "MEDIUM") return "Medio";
+  if (normalized === "HIGH") return "Alto";
+  if (normalized === "CRITICAL") return "Crítico";
+
+  return value;
+}
+
+function getRiskBandPillStyle(value: string): CSSProperties {
+  const normalized = String(value || "").toUpperCase().trim();
+
+  if (normalized === "CRITICAL") {
+    return {
+      ...pillBaseStyle,
+      background: "#fee2e2",
+      color: "#991b1b",
+      border: "1px solid #fecaca",
+    };
+  }
+
+  if (normalized === "HIGH") {
+    return {
+      ...pillBaseStyle,
+      background: "#fff7ed",
+      color: "#9a3412",
+      border: "1px solid #fed7aa",
+    };
+  }
+
+  if (normalized === "MEDIUM") {
+    return {
+      ...pillBaseStyle,
+      background: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fde68a",
+    };
+  }
+
+  return {
+    ...pillBaseStyle,
+    background: "#ecfdf5",
+    color: "#166534",
+    border: "1px solid #bbf7d0",
+  };
+}
+
+function getRiskSourceLabel(sourceType: RiskStratificationSourceType): string {
+  if (sourceType === "real") return "Dato confirmado";
+  if (sourceType === "proxy") return "Dato inferido";
+  return "Dato no disponible";
+}
+
+function getRiskSourcePillStyle(
+  sourceType: RiskStratificationSourceType,
+): CSSProperties {
+  if (sourceType === "future-missing") {
+    return {
+      ...pillBaseStyle,
+      background: "#f3f4f6",
+      color: "#374151",
+      border: "1px solid #d1d5db",
+    };
+  }
+
+  if (sourceType === "proxy") {
+    return {
+      ...pillBaseStyle,
+      background: "#eff6ff",
+      color: "#1d4ed8",
+      border: "1px solid #bfdbfe",
+    };
+  }
+
+  return {
+    ...pillBaseStyle,
+    background: "#ecfdf5",
+    color: "#166534",
+    border: "1px solid #bbf7d0",
+  };
+}
+
+function getPriorityHintLabel(value: RiskStratificationPriorityHint): string {
+  if (value === "ESCALATE_NOW") return "Escalar ahora";
+  if (value === "PRIORITIZE_REVIEW") return "Priorizar revisión";
+  return "Mantener actual";
+}
+
+function getSuggestedRoleLabel(value: RiskStratificationV1["suggestedInitialRole"]): string {
+  if (value === "PROFESSIONAL") return "Profesional";
+  if (value === "OPERATOR") return "Operador";
+  if (value === "EDUCATION") return "Educación";
+  return "Sin asignación sugerida";
+}
+
+function getDimensionLabel(value: string): string {
+  return value === "baseline" ? "Base clínica" : "Situación actual";
+}
+
+function formatRiskSourceKey(value: string): string {
+  const normalized = String(value || "").trim();
+
+  const sourceLabels: Record<string, string> = {
+    "diabetes-setup.insulin.known": "Setup de insulina confirmado",
+    "diabetes-setup.insulin.deferred": "Setup de insulina diferido",
+    "diabetes-setup.insulin.legacy-missing": "Setup de insulina todavía no registrado",
+    "clinical-risk-summary.renal": "Resumen renal",
+    "clinical-risk-summary.retinopathy": "Resumen de retinopatía",
+    "patient.years-since-diagnosis": "Años desde el diagnóstico",
+    "medication-coverage.status": "Cobertura de medicación",
+    "dispenses.pickup-pattern": "Patrón de retiro",
+    "future-missing.dialysis": "Diálisis todavía no registrada",
+    "future-missing.diabetic-foot": "Compromiso de pie diabético todavía no registrado",
+    "future-missing.visual-impairment": "Compromiso visual todavía no registrado",
+    "future-missing.self-management-barriers": "Barreras de autocuidado todavía no registradas",
+  };
+
+  return sourceLabels[normalized] ?? normalized.replace(/[-_.]/g, " ");
+}
+
+function formatBaselineFactorValue(value: string | number | boolean | null): string {
+  if (value === null || value === undefined) return "Sin dato estructurado";
+  if (typeof value === "boolean") return value ? "Sí" : "No";
+  return String(value);
+}
+
+function formatDiabetesSetupSummary(
+  summary: FollowupEventRow["patient"]["diabetesSetupSummary"],
+): string {
+  if (summary.completionState === "DEFERRED") {
+    return "Diabetes: setup diferido";
+  }
+
+  if (summary.completionState === "LEGACY_MISSING") {
+    return "Diabetes: setup legacy pendiente";
+  }
+
+  if (summary.diabetesType) {
+    return `Diabetes: ${summary.diabetesType}`;
+  }
+
+  return "Diabetes: setup completo (tipo no especificado)";
+}
+
 export function InterventionPanel({
   open,
   event,
   onClose,
+  riskStratification = null,
+  riskLoading = false,
+  riskError = null,
   children,
   historyContent,
 }: InterventionPanelProps) {
@@ -424,7 +627,7 @@ export function InterventionPanel({
             </div>
 
             <div style={{ marginTop: 6, fontSize: 13, color: "#374151" }}>
-              Diabetes: tipo no disponible
+              {formatDiabetesSetupSummary(event.patient.diabetesSetupSummary)}
             </div>
 
             <div
@@ -491,11 +694,431 @@ export function InterventionPanel({
               flexShrink: 0,
             }}
           >
-            Cerrar
+            Cerrar panel
           </button>
         </div>
 
         <div style={bodyStyle}>
+          <section style={riskCardStyle}>
+            <div style={timelineHeaderStyle}>
+              <div style={timelineTitleBlockStyle}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: "#111827",
+                  }}
+                >
+                  Orientación clínica y operativa
+                </div>
+
+                <div style={timelineMetaStyle}>
+                  Lectura orientativa para entender el caso. No cambia el orden actual de la bandeja.
+                </div>
+              </div>
+            </div>
+
+            {riskLoading ? (
+              <div style={{ fontSize: 13, color: "#6b7280" }}>
+                Cargando estratificación de riesgo...
+              </div>
+            ) : riskError ? (
+              <div style={riskListStyle}>
+                <div style={{ fontSize: 13, color: "#b91c1c" }}>{riskError}</div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                  El panel sigue disponible aunque esta lectura advisory falle.
+                </div>
+              </div>
+            ) : riskStratification ? (
+              <div style={riskListStyle}>
+                <div style={riskGridStyle}>
+                  <section style={sectionCardStyle}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "#111827",
+                        marginBottom: 10,
+                      }}
+                    >
+                      Resumen del caso
+                    </div>
+
+                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                      Síntesis rápida de riesgo, prioridad sugerida y rol inicial recomendado.
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <span style={getRiskBandPillStyle(riskStratification.baselineRiskBand)}>
+                        Riesgo base: {getRiskBandLabel(riskStratification.baselineRiskBand)}
+                      </span>
+                      <span style={getRiskBandPillStyle(riskStratification.dynamicRiskBand)}>
+                        Riesgo dinámico: {getRiskBandLabel(riskStratification.dynamicRiskBand)}
+                      </span>
+                    </div>
+
+                    <div style={riskMetaGridStyle}>
+                      <div>
+                        <strong>Prioridad sugerida:</strong>{" "}
+                        {getPriorityHintLabel(
+                          riskStratification.operationalPriorityHint,
+                        )}
+                      </div>
+                      <div>
+                        <strong>Rol inicial sugerido:</strong>{" "}
+                        {getSuggestedRoleLabel(
+                          riskStratification.suggestedInitialRole,
+                        )}
+                      </div>
+                      <div>
+                        <strong>Versión:</strong> {riskStratification.version}
+                      </div>
+                      <div>
+                        <strong>Calculado:</strong>{" "}
+                        {new Date(riskStratification.computedAt).toLocaleString()}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section style={sectionCardStyle}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "#111827",
+                        marginBottom: 10,
+                      }}
+                    >
+                      Criterios aplicados
+                    </div>
+
+                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                      Reglas internas que ayudaron a formar esta lectura del caso.
+                    </div>
+
+                    <div style={riskListStyle}>
+                      {riskStratification.triggeredRules.length > 0 ? (
+                        riskStratification.triggeredRules.map((rule) => (
+                          <div key={rule.code} style={riskListRowStyle}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                              {rule.label}
+                            </div>
+                            <div style={{ fontSize: 13, color: "#374151" }}>{rule.effect}</div>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>{rule.code}</div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ fontSize: 13, color: "#6b7280" }}>
+                          Para este evento no se activaron criterios especiales visibles.
+                        </div>
+                      )}
+
+                      {riskStratification.overrides.length > 0 ? (
+                        riskStratification.overrides.map((override) => (
+                          <div key={override.code} style={riskListRowStyle}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                              Override aplicado
+                            </div>
+                            <div style={{ fontSize: 13, color: "#374151" }}>
+                              {override.reason}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>
+                              Reemplaza: {getPriorityHintLabel(override.replaced)} · {override.code}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ fontSize: 13, color: "#6b7280" }}>
+                          No hubo ajustes extraordinarios sobre la lectura base.
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                </div>
+
+                <section style={sectionCardStyle}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#111827",
+                      marginBottom: 10,
+                    }}
+                  >
+                    Factores clínicos de base
+                  </div>
+
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                    Datos del paciente que ayudan a entender su vulnerabilidad de fondo.
+                  </div>
+
+                  {riskStratification.baselineProfile ? (
+                    <div style={riskListStyle}>
+                      {riskStratification.baselineProfile.factors.length > 0 ? (
+                        riskStratification.baselineProfile.factors.map((factor) => (
+                          <div key={factor.key} style={riskListRowStyle}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                alignItems: "center",
+                              }}
+                            >
+                              <span style={getRiskSourcePillStyle(factor.sourceType)}>
+                                {getRiskSourceLabel(factor.sourceType)}
+                              </span>
+                              <span
+                                style={{
+                                  ...pillBaseStyle,
+                                  background:
+                                    factor.status === "used" ? "#ecfdf5" : "#f3f4f6",
+                                  color:
+                                    factor.status === "used" ? "#166534" : "#374151",
+                                  border:
+                                    factor.status === "used"
+                                      ? "1px solid #bbf7d0"
+                                      : "1px solid #d1d5db",
+                                }}
+                              >
+                                {factor.status === "used" ? "Usado" : "Faltante"}
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                              {factor.label}
+                            </div>
+                            <div style={{ fontSize: 13, color: "#374151" }}>
+                              Valor: {formatBaselineFactorValue(factor.value)}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>
+                              Fuentes: {factor.provenance.map((source) => formatRiskSourceKey(source.key)).join(" · ")}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ fontSize: 13, color: "#6b7280" }}>
+                          Sin factores estructurados disponibles.
+                        </div>
+                      )}
+
+                      <div style={riskListStyle}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                          Conclusiones del sistema
+                        </div>
+
+                        <div style={{ fontSize: 12, color: "#6b7280" }}>
+                          Lecturas resumidas que el sistema arma a partir de los factores disponibles.
+                        </div>
+
+                        {riskStratification.baselineProfile.ruleBands.length > 0 ? (
+                          riskStratification.baselineProfile.ruleBands.map((ruleBand) => (
+                            <div key={ruleBand.code} style={riskListRowStyle}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 8,
+                                  alignItems: "center",
+                                }}
+                              >
+                                <span style={getRiskBandPillStyle(ruleBand.band)}>
+                                  {getRiskBandLabel(ruleBand.band)}
+                                </span>
+                                <span style={getRiskSourcePillStyle(ruleBand.sourceType)}>
+                                  {getRiskSourceLabel(ruleBand.sourceType)}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                                {ruleBand.label}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 13, color: "#6b7280" }}>
+                            Sin bandas basales activadas.
+                          </div>
+                        )}
+                      </div>
+
+                      {riskStratification.baselineProfile.missingFactors.length > 0 ? (
+                        <div style={riskListStyle}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                            Datos clínicos todavía no disponibles
+                          </div>
+
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>
+                            Información que sería útil tener, pero que hoy todavía no está cargada de forma estructurada.
+                          </div>
+
+                          {riskStratification.baselineProfile.missingFactors.map((factor) => (
+                            <div key={factor.key} style={riskListRowStyle}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 8,
+                                  alignItems: "center",
+                                }}
+                              >
+                                <span style={getRiskSourcePillStyle("future-missing")}>
+                                  Dato no disponible
+                                </span>
+                                <span
+                                  style={{
+                                    ...pillBaseStyle,
+                                    background: "#f3f4f6",
+                                    color: "#374151",
+                                    border: "1px solid #d1d5db",
+                                  }}
+                                >
+                                  Faltante
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                                {factor.label}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: "#6b7280" }}>
+                      Este evento todavía usa el resumen legacy. Se mantiene la vista actual sin cambios.
+                    </div>
+                  )}
+                </section>
+
+                <div style={riskGridStyle}>
+                  <section style={sectionCardStyle}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "#111827",
+                        marginBottom: 10,
+                      }}
+                    >
+                      Por qué el sistema muestra esto
+                    </div>
+
+                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                      Explicaciones resumidas de los factores que más pesaron en esta orientación.
+                    </div>
+
+                    <div style={riskListStyle}>
+                      {riskStratification.explainabilityReasons.length > 0 ? (
+                        riskStratification.explainabilityReasons.map((reason) => (
+                          <div key={reason.code} style={riskListRowStyle}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                alignItems: "center",
+                              }}
+                            >
+                              <span style={getRiskSourcePillStyle(reason.sourceType)}>
+                                {getRiskSourceLabel(reason.sourceType)}
+                              </span>
+                              <span style={{ ...pillBaseStyle, background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}>
+                                {getDimensionLabel(reason.dimension)}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                              {reason.label}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ fontSize: 13, color: "#6b7280" }}>
+                          Sin razones explicables informadas.
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section style={sectionCardStyle}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "#111827",
+                        marginBottom: 10,
+                      }}
+                    >
+                      Datos usados para esta lectura
+                    </div>
+
+                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                      Qué información tomó el sistema y qué datos todavía faltan para completar la evaluación.
+                    </div>
+
+                    <div style={riskListStyle}>
+                      {riskStratification.inputSourcesUsed.length > 0 ? (
+                        riskStratification.inputSourcesUsed.map((source) => (
+                          <div key={`${source.key}-${source.sourceType}-${source.status}`} style={riskListRowStyle}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                alignItems: "center",
+                              }}
+                            >
+                              <span style={getRiskSourcePillStyle(source.sourceType)}>
+                                {getRiskSourceLabel(source.sourceType)}
+                              </span>
+                              <span
+                                style={{
+                                  ...pillBaseStyle,
+                                  background:
+                                    source.status === "used" ? "#ecfdf5" : "#f3f4f6",
+                                  color:
+                                    source.status === "used" ? "#166534" : "#374151",
+                                  border:
+                                    source.status === "used"
+                                      ? "1px solid #bbf7d0"
+                                      : "1px solid #d1d5db",
+                                }}
+                              >
+                                {source.status === "used" ? "Usado" : "Faltante"}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                              {formatRiskSourceKey(source.key)}
+                            </div>
+                            {source.sourceType === "future-missing" ? (
+                              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                                Factor reservado para una extensión futura; hoy queda explícitamente faltante.
+                              </div>
+                            ) : null}
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ fontSize: 13, color: "#6b7280" }}>
+                          Sin detalle de fuentes para mostrar.
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "#6b7280" }}>
+                Sin estratificación disponible para este evento.
+              </div>
+            )}
+          </section>
+
           <section style={sectionCardStyle}>
             <div
               style={{
@@ -602,8 +1225,13 @@ export function InterventionPanel({
                 }}
               >
                 <div>
-                  <strong>Motivo operativo:</strong>{" "}
-                  {getOperationalPriorityMessage(event.severity)}
+                  <strong>Por qué requiere seguimiento ahora:</strong>{" "}
+                  {getOperationalPriorityMessage({
+                    severity: event.severity,
+                    category: event.category,
+                    status: event.status,
+                    adherenceStatus: event.adherenceContext?.status,
+                  })}
                 </div>
                 <div>
                   <strong>Tipo:</strong> {formatCategoryLabel(event.category)}
@@ -970,11 +1598,11 @@ export function InterventionPanel({
                       color: "#111827",
                     }}
                   >
-                    Historial
+                    Traza operativa
                   </div>
 
                   <div style={timelineMetaStyle}>
-                    Acciones registradas del caso en seguimiento.
+                    Hitos del caso, intervenciones y educación en una sola secuencia.
                   </div>
                 </div>
 
@@ -983,7 +1611,7 @@ export function InterventionPanel({
                   onClick={() => setHistoryExpanded((prev) => !prev)}
                   style={timelineToggleButtonStyle}
                 >
-                  {historyExpanded ? "Ocultar" : "Ver historial"}
+                  {historyExpanded ? "Ocultar" : "Ver traza"}
                 </button>
               </div>
 

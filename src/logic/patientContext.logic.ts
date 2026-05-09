@@ -123,22 +123,50 @@ export function getClinicalNarrativeFallback(category: string): string {
   return "Situación clínica que requiere seguimiento";
 }
 
-export function getOperationalPriorityMessage(severity: string): string {
-  const value = String(severity || "").toUpperCase().trim();
+export function getOperationalPriorityMessage(input: {
+  severity: string;
+  category: string;
+  status: string;
+  adherenceStatus?: string | null;
+}): string {
+  const severity = String(input.severity || "").toUpperCase().trim();
+  const category = String(input.category || "").toUpperCase().trim();
+  const status = String(input.status || "").toUpperCase().trim();
+  const adherenceStatus = String(input.adherenceStatus || "").toUpperCase().trim();
 
-  if (value === "CRITICAL") {
-    return "requiere atención prioritaria del equipo.";
+  if (status === "CLOSED") {
+    return "El caso ya quedó resuelto y se mantiene visible solo para cierre operativo y trazabilidad.";
   }
 
-  if (value === "HIGH") {
-    return "requiere seguimiento activo en el corto plazo.";
+  if (category === "ADHERENCE") {
+    if (adherenceStatus === "CRITICAL") {
+      return "Hay riesgo de interrupción del tratamiento y conviene contactar al paciente cuanto antes.";
+    }
+
+    return "Conviene confirmar retiro, continuidad del tratamiento y próximos pasos de seguimiento.";
   }
 
-  if (value === "MEDIUM") {
-    return "requiere revisión clínica y seguimiento programado.";
+  if (category === "OPERATIONAL") {
+    return "Hay una incidencia operativa que puede frenar la continuidad del cuidado y necesita destrabe del equipo.";
   }
 
-  return "requiere seguimiento según evolución clínica y operativa.";
+  if (category === "PREVENTIVE") {
+    return "Requiere seguimiento preventivo programado para no perder oportunidad de intervención.";
+  }
+
+  if (severity === "CRITICAL") {
+    return "La situación requiere atención prioritaria del equipo sin demoras.";
+  }
+
+  if (severity === "HIGH") {
+    return "Requiere seguimiento activo en el corto plazo para evitar deterioro clínico.";
+  }
+
+  if (severity === "MEDIUM") {
+    return "Conviene revisión clínica y seguimiento programado para confirmar evolución.";
+  }
+
+  return "Necesita seguimiento clínico y operativo según evolución del caso.";
 }
 
 export function getSuggestedAction(severity: string): string {

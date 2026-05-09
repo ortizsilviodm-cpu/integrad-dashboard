@@ -3,6 +3,7 @@
 import { Card } from "../../components/ui/Card";
 import { PatientAvatar } from "../../components/common/PatientAvatar";
 import {
+  buildFollowupStatusLabel,
   buildManagementText,
   buildPatientSecondaryText,
   buildReasonText,
@@ -51,7 +52,7 @@ export default function CaseloadView({
     setPageSize,
   } = useCaseload();
 
-  async function handleManage(input: {
+async function handleManage(input: {
     patientId: string;
     caseId: string;
     visibleReason: string;
@@ -62,12 +63,10 @@ export default function CaseloadView({
       return;
     }
 
+    // patientId como unidad principal; followupEventId acompaña si existe
     onOpenWorkspace?.({
       patientId: input.patientId,
-      followupEventId:
-        result.workspaceTarget === undefined
-          ? input.caseId
-          : result.workspaceTarget?.followupEventId ?? null,
+      followupEventId: result.workspaceTarget?.followupEventId ?? null,
       caseSummary: input.visibleReason,
     });
   }
@@ -158,6 +157,7 @@ export default function CaseloadView({
                   {items.map((item) => {
                     const sourceLabels = buildSourceLabels(item);
                     const managementText = buildManagementText(item);
+                    const followupStatusLabel = buildFollowupStatusLabel(item);
 
                     return (
                       <tr key={item.caseId} style={styles.tr}>
@@ -218,10 +218,16 @@ export default function CaseloadView({
                         </td>
 
                         <td style={styles.td}>
-                          {managementText ? (
-                            <div style={styles.inProgressBox}>{item.caseStateLabel}</div>
-                          ) : (
-                            <span style={styles.availableText}>{item.caseStateLabel}</span>
+                          {item.followupStatus === "NEEDS_ATTENTION" && (
+                            <div style={styles.inProgressBox}>{followupStatusLabel}</div>
+                          )}
+
+                          {item.followupStatus === "ACTIVE" && (
+                            <div style={styles.activeStatusBox}>{followupStatusLabel}</div>
+                          )}
+
+                          {item.followupStatus === "STABLE" && (
+                            <span style={styles.availableText}>{followupStatusLabel}</span>
                           )}
 
                         </td>

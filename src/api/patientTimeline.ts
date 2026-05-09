@@ -18,16 +18,7 @@ type PatientTimelineResponse = {
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 function resolveAccessToken(): string | null {
-  const tokenFromStore = getAuthToken();
-  if (tokenFromStore) return tokenFromStore;
-
-  const tokenFromSession = sessionStorage.getItem("integrad_access_token");
-  if (tokenFromSession) return tokenFromSession;
-
-  const tokenFromLocal = localStorage.getItem("integrad_access_token");
-  if (tokenFromLocal) return tokenFromLocal;
-
-  return null;
+  return getAuthToken();
 }
 
 export async function fetchPatientTimeline(

@@ -1,9 +1,17 @@
-// integrad-dashboard/src/pages/CaseloadPage.tsx
+/* integrad-dashboard/src/pages/CaseloadPage.tsx */
 
-export default function CaseloadPage() {
-  return (
-    <div style={{ padding: 16 }}>
-      Módulo Caseload en construcción.
-    </div>
-  );
+import CaseloadView from "../views/caseload/CaseloadView";
+
+type CaseloadPageProps = {
+  onOpenWorkspace?: (input: {
+    patientId: string;
+    followupEventId?: string | null;
+    caseSummary?: string | null;
+  }) => void;
+};
+
+export default function CaseloadPage({
+  onOpenWorkspace,
+}: CaseloadPageProps) {
+  return <CaseloadView onOpenWorkspace={onOpenWorkspace} />;
 }
