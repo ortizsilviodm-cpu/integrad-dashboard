@@ -1,7 +1,9 @@
+import { getAuthToken } from "../store/authStore";
+
 const API_BASE_URL = "http://localhost:4000";
 
 export async function apiFetch(path: string, options?: RequestInit) {
-  const token = localStorage.getItem("token");
+  const token = getAuthToken();
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

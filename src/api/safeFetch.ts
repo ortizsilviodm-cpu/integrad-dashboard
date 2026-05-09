@@ -1,7 +1,7 @@
 /* integrad-dashboard/src/api/safeFetch.ts */
 // Helper de fetch con timeout, manejo de errores centralizado, y AUTENTICACIÓN.
 
-import { getAuthToken } from "../store/authStore"; // legacy fallback
+import { getAuthToken } from "../store/authStore";
 
 export interface SafeFetchResult<T> {
   ok: boolean;
@@ -19,23 +19,8 @@ export function isAuthError(
   return result.status === 401 || result.status === 403;
 }
 
-const KEYCLOAK_TOKEN_KEY = "integrad_access_token";
-
-/**
- * Preferimos token Keycloak (Sprint 53). Si no existe, fallback a token legacy.
- */
 function getBearerToken(): string | null {
-  try {
-    const kc = sessionStorage.getItem(KEYCLOAK_TOKEN_KEY);
-    if (kc && kc.trim()) return kc.trim();
-  } catch {
-    // ignore
-  }
-
-  const legacy = getAuthToken();
-  if (legacy && legacy.trim()) return legacy.trim();
-
-  return null;
+  return getAuthToken();
 }
 
 /**

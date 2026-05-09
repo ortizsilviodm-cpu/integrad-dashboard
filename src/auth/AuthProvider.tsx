@@ -1,6 +1,7 @@
 /*integrad-dashboard\src\auth\AuthProvider.tsx*/
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { keycloak } from "./keycloak";
+import { setAuthToken, clearAuthToken } from "../store/authStore";
 
 type AuthContextType = {
   isAuthenticated: boolean;
@@ -10,18 +11,6 @@ type AuthContextType = {
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
-
-// Debe coincidir con src/api/patients.ts
-const ACCESS_TOKEN_KEY = "integrad_access_token";
-
-function persistToken(token: string | null) {
-  try {
-    if (token) sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
-    else sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-  } catch {
-    // ignore
-  }
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -43,40 +32,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         pkceMethod: "S256",
         checkLoginIframe: false,
       })
-      .then((auth) => {
-        setIsAuthenticated(auth);
+        .then((auth) => {
+          setIsAuthenticated(auth);
 
-        const t = keycloak.token ?? null;
-        setToken(t);
-        persistToken(t);
+          const t = keycloak.token ?? null;
+          setToken(t);
+          setAuthToken(t);
 
         intervalId = window.setInterval(() => {
           if (!keycloak.token) return;
 
           keycloak
             .updateToken(30)
-            .then(() => {
-              const newToken = keycloak.token ?? null;
-              setToken(newToken);
-              persistToken(newToken);
-            })
-            .catch(() => {
-              setIsAuthenticated(false);
-              setToken(null);
-              persistToken(null);
-            });
+              .then(() => {
+                const newToken = keycloak.token ?? null;
+                setToken(newToken);
+                setAuthToken(newToken);
+              })
+              .catch(() => {
+                setIsAuthenticated(false);
+                setToken(null);
+                clearAuthToken();
+              });
         }, 10_000);
       })
       .catch(() => {
         setIsAuthenticated(false);
         setToken(null);
-        persistToken(null);
+        clearAuthToken();
       });
 
     keycloak.onTokenExpired = () => {
       setIsAuthenticated(false);
       setToken(null);
-      persistToken(null);
+      clearAuthToken();
       stopRefresh();
     };
 
@@ -94,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout: () => {
         setIsAuthenticated(false);
         setToken(null);
-        persistToken(null);
+        clearAuthToken();
         return keycloak.logout({ redirectUri: window.location.origin });
       },
     }),

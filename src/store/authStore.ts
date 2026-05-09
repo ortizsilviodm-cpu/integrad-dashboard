@@ -1,9 +1,46 @@
 // integrad-dashboard/src/store/authStore.ts
 // Store mínimo de autenticación para IntegraD Dashboard.
-// Maneja el token JWT en localStorage y helpers de lectura.
+// Fuente única de verdad para el token JWT del frontend.
 
-const TOKEN_KEY = "integrad_auth_token";
+export const AUTH_TOKEN_KEY = "integrad_auth_token";
+export const KEYCLOAK_ACCESS_TOKEN_KEY = "integrad_access_token";
 const LEGACY_TOKEN_KEYS = ["auth_token", "token", "userToken"] as const;
+
+function writeTokenToAllStores(token: string | null): void {
+  if (typeof window === "undefined") return;
+
+  if (token) {
+    window.sessionStorage.setItem(KEYCLOAK_ACCESS_TOKEN_KEY, token);
+    window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+    // Compatibilidad defensiva transitoria con módulos que aún no migraron.
+    window.localStorage.setItem(KEYCLOAK_ACCESS_TOKEN_KEY, token);
+  } else {
+    window.sessionStorage.removeItem(KEYCLOAK_ACCESS_TOKEN_KEY);
+    window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    window.localStorage.removeItem(KEYCLOAK_ACCESS_TOKEN_KEY);
+  }
+}
+
+function readCanonicalToken(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const sessionToken = window.sessionStorage.getItem(KEYCLOAK_ACCESS_TOKEN_KEY);
+    if (sessionToken) return sessionToken;
+
+    const authStoreToken = window.localStorage.getItem(AUTH_TOKEN_KEY);
+    if (authStoreToken) return authStoreToken;
+
+    const mirroredKeycloakToken = window.localStorage.getItem(
+      KEYCLOAK_ACCESS_TOKEN_KEY,
+    );
+    if (mirroredKeycloakToken) return mirroredKeycloakToken;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 function cleanupLegacyTokenKeys(): void {
   if (typeof window === "undefined") return;
@@ -36,8 +73,9 @@ function migrateLegacyTokenIfNeeded(): string | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const currentToken = window.localStorage.getItem(TOKEN_KEY);
+    const currentToken = readCanonicalToken();
     if (currentToken) {
+      writeTokenToAllStores(currentToken);
       cleanupLegacyTokenKeys();
       return currentToken;
     }
@@ -48,7 +86,7 @@ function migrateLegacyTokenIfNeeded(): string | null {
       return null;
     }
 
-    window.localStorage.setItem(TOKEN_KEY, legacyToken);
+    writeTokenToAllStores(legacyToken);
     cleanupLegacyTokenKeys();
     return legacyToken;
   } catch {
@@ -81,11 +119,7 @@ export function setAuthToken(token: string | null): void {
   try {
     cleanupLegacyTokenKeys();
 
-    if (token) {
-      window.localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      window.localStorage.removeItem(TOKEN_KEY);
-    }
+    writeTokenToAllStores(token);
 
     notifyAuthChange(token);
   } catch {
@@ -100,7 +134,7 @@ export function clearAuthToken(): void {
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.removeItem(TOKEN_KEY);
+    writeTokenToAllStores(null);
     cleanupLegacyTokenKeys();
     notifyAuthChange(null);
   } catch {
