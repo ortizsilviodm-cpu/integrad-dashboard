@@ -19,9 +19,11 @@ describe("CaseloadView", () => {
           caseId: "case-adh-1",
           patientId: "pat-adh-1",
           fullName: "Ana Semántica",
+          lastContactAt: null,
           visibleReason: "Origen: Adherencia • DISPENSE_OVERDUE",
           priorityLevel: "P3",
           priorityLabel: "Atención sugerida",
+          followupStatus: "NEEDS_ATTENTION",
           slaLabel: "Sin SLA",
           caseStateLabel: "Pendiente",
           assignmentStatus: "UNASSIGNED",
@@ -34,6 +36,7 @@ describe("CaseloadView", () => {
             "CHRONIC_HIGH_RENAL_OR_RETINOPATHY_UPLIFT",
           ],
           hasClinical: true,
+          hasAdherence: true,
           hasEducational: false,
           hasOperational: false,
           managementStatus: "AVAILABLE",
@@ -44,15 +47,18 @@ describe("CaseloadView", () => {
           caseId: "case-cli-1",
           patientId: "pat-cli-1",
           fullName: "Beto Agudo",
+          lastContactAt: "2026-04-20T10:00:00.000Z",
           visibleReason: "CLINICAL - CRITICAL_LAB",
           priorityLevel: "P1",
           priorityLabel: "Alta prioridad",
+          followupStatus: "ACTIVE",
           slaLabel: "Vence hoy",
           caseStateLabel: "En gestión",
           assignmentStatus: "ASSIGNED",
           assignmentStatusLabel: "Asignado",
           reasons: ["CLINICAL - CRITICAL_LAB"],
           hasClinical: true,
+          hasAdherence: false,
           hasEducational: false,
           hasOperational: false,
           managementStatus: "IN_PROGRESS",
@@ -87,6 +93,7 @@ describe("CaseloadView", () => {
       "Origen: Adherencia • DISPENSE_OVERDUE • CHRONIC_HIGH_RENAL_OR_RETINOPATHY_UPLIFT",
     );
     expect(html).toContain("Clínico");
+    expect(html).toContain("Seguimiento activo");
     expect(html).toContain("CLINICAL - CRITICAL_LAB");
     expect(html).toContain("En gestión por Dra. House");
   });
