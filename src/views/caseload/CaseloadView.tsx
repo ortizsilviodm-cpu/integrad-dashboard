@@ -5,6 +5,9 @@ import { PatientAvatar } from "../../components/common/PatientAvatar";
 import {
   buildFollowupStatusLabel,
   buildManagementText,
+  buildOperationalCaseMotiveLabel,
+  buildOperationalCaseSecondaryText,
+  buildOperationalCaseStatusLabel,
   buildPatientSecondaryText,
   buildReasonText,
   buildSourceLabels,
@@ -52,7 +55,7 @@ export default function CaseloadView({
     setPageSize,
   } = useCaseload();
 
-async function handleManage(input: {
+  async function handleManage(input: {
     patientId: string;
     caseId: string;
     visibleReason: string;
@@ -157,7 +160,12 @@ async function handleManage(input: {
                   {items.map((item) => {
                     const sourceLabels = buildSourceLabels(item);
                     const managementText = buildManagementText(item);
-                    const followupStatusLabel = buildFollowupStatusLabel(item);
+                    const operationalCaseMotiveLabel =
+                      buildOperationalCaseMotiveLabel(item);
+                    const operationalCaseSecondaryText =
+                      buildOperationalCaseSecondaryText(item);
+                    const followupStatusLabel =
+                      buildFollowupStatusLabel(item);
 
                     return (
                       <tr key={item.caseId} style={styles.tr}>
@@ -177,6 +185,12 @@ async function handleManage(input: {
                                 <div style={styles.patientSecondary}>
                                   {buildPatientSecondaryText(item)}
                                 </div>
+
+                                {item.operationalCase ? (
+                                  <div style={styles.operationalCaseMeta}>
+                                    Caso operacional real
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
                           </Card>
@@ -198,9 +212,21 @@ async function handleManage(input: {
                         </td>
 
                         <td style={styles.td}>
-                          <div style={styles.reasonText}>
+                          <div
+                            style={
+                              operationalCaseMotiveLabel
+                                ? styles.reasonPrimaryText
+                                : styles.reasonText
+                            }
+                          >
                             {buildReasonText(item)}
                           </div>
+
+                          {operationalCaseSecondaryText ? (
+                            <div style={styles.reasonSecondaryText}>
+                              {operationalCaseSecondaryText}
+                            </div>
+                          ) : null}
                         </td>
 
                         <td style={styles.td}>
@@ -214,33 +240,48 @@ async function handleManage(input: {
                         </td>
 
                         <td style={styles.td}>
-                          <div style={styles.reasonText}>{item.slaLabel}</div>
+                          <div style={styles.reasonText}>
+                            {item.slaLabel}
+                          </div>
                         </td>
 
                         <td style={styles.td}>
-                          {item.followupStatus === "NEEDS_ATTENTION" && (
-                            <div style={styles.inProgressBox}>{followupStatusLabel}</div>
-                          )}
-
-                          {item.followupStatus === "ACTIVE" && (
-                            <div style={styles.activeStatusBox}>{followupStatusLabel}</div>
-                          )}
-
-                          {item.followupStatus === "STABLE" && (
-                            <span style={styles.availableText}>{followupStatusLabel}</span>
-                          )}
-
+                          {item.operationalCase ? (
+                            <div style={styles.operationalCaseStatus}>
+                              {buildOperationalCaseStatusLabel(
+                                item.operationalCase.status,
+                              )}
+                            </div>
+                          ) : item.followupStatus === "NEEDS_ATTENTION" ? (
+                            <div style={styles.inProgressBox}>
+                              {followupStatusLabel}
+                            </div>
+                          ) : item.followupStatus === "ACTIVE" ? (
+                            <div style={styles.activeStatusBox}>
+                              {followupStatusLabel}
+                            </div>
+                          ) : item.followupStatus === "STABLE" ? (
+                            <span style={styles.availableText}>
+                              {followupStatusLabel}
+                            </span>
+                          ) : null}
                         </td>
 
                         <td style={styles.td}>
                           {item.assignmentStatus === "ASSIGNED" ? (
-                            <div style={styles.inProgressBox}>{item.assignmentStatusLabel}</div>
+                            <div style={styles.inProgressBox}>
+                              {item.assignmentStatusLabel}
+                            </div>
                           ) : (
-                            <span style={styles.availableText}>{item.assignmentStatusLabel}</span>
+                            <span style={styles.availableText}>
+                              {item.assignmentStatusLabel}
+                            </span>
                           )}
 
                           {managementText ? (
-                            <div style={styles.managementMetaText}>{managementText}</div>
+                            <div style={styles.managementMetaText}>
+                              {managementText}
+                            </div>
                           ) : null}
                         </td>
 
@@ -309,7 +350,9 @@ async function handleManage(input: {
 
                   <select
                     value={pageSize}
-                    onChange={(event) => setPageSize(Number(event.target.value))}
+                    onChange={(event) =>
+                      setPageSize(Number(event.target.value))
+                    }
                     style={styles.filterSelect}
                   >
                     {pageSizeOptions.map((option) => (

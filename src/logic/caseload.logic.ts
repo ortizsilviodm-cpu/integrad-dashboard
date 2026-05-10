@@ -61,6 +61,10 @@ export function buildSourceLabels(item: CaseloadItem): string[] {
 }
 
 export function buildReasonText(item: CaseloadItem): string {
+  const operationalMotive = buildOperationalCaseMotiveLabel(item);
+
+  if (operationalMotive) return operationalMotive;
+
   if (item.reasons.length > 0) return item.reasons.join(" • ");
 
   if (item.displayReasons && item.displayReasons.length > 0) {
@@ -72,6 +76,21 @@ export function buildReasonText(item: CaseloadItem): string {
   }
 
   return "Sin motivos activos informados.";
+}
+
+export function buildOperationalCaseSecondaryText(
+  item: CaseloadItem,
+): string | null {
+  if (!item.operationalCase) return null;
+
+  const parts: string[] = [];
+
+  parts.push(`Estado: ${formatOperationalCaseStatus(item.operationalCase.status)}`);
+  parts.push(
+    `Prioridad: ${formatOperationalCasePriority(item.operationalCase.priority)}`,
+  );
+
+  return parts.join(" • ");
 }
 
 export function buildFollowupStatusLabel(item: CaseloadItem): string {
@@ -93,6 +112,63 @@ export function buildManagementText(item: CaseloadItem): string | null {
   }
 
   return "En gestión";
+}
+
+export function buildOperationalCaseStatusLabel(
+  status: NonNullable<CaseloadItem["operationalCase"]>["status"],
+): string {
+  return formatOperationalCaseStatus(status);
+}
+
+export function buildOperationalCaseMotiveLabel(item: CaseloadItem): string | null {
+  const motive = item.operationalCase?.operationalMotive;
+
+  switch (motive) {
+    case "THERAPEUTIC_ABANDONMENT_RISK":
+      return "Riesgo de abandono terapéutico";
+    case "GLUCOSE_RISK":
+      return "Riesgo glucémico elevado";
+    case "NEEDS_EDUCATION":
+      return "Necesita educación";
+    case "CONTACT_DIFFICULTY":
+      return "Dificultad de contacto";
+    case "INTERDISCIPLINARY_INTERVENTION_REQUIRED":
+      return "Requiere intervención interdisciplinaria";
+    default:
+      return null;
+  }
+}
+
+function formatOperationalCaseStatus(
+  status: NonNullable<CaseloadItem["operationalCase"]>["status"],
+): string {
+  switch (status) {
+    case "OPEN":
+      return "Abierto";
+    case "IN_PROGRESS":
+      return "En gestión";
+    case "STABILIZED":
+      return "Estabilizado";
+    case "RESOLVED":
+      return "Resuelto";
+    case "REOPENED":
+      return "Reabierto";
+  }
+}
+
+function formatOperationalCasePriority(
+  priority: NonNullable<CaseloadItem["operationalCase"]>["priority"],
+): string {
+  switch (priority) {
+    case "LOW":
+      return "Baja";
+    case "MEDIUM":
+      return "Media";
+    case "HIGH":
+      return "Alta";
+    case "CRITICAL":
+      return "Crítica";
+  }
 }
 
 export function buildPatientSecondaryText(item: CaseloadItem): string {

@@ -118,6 +118,12 @@ export const styles: Record<string, CSSProperties> = {
     color: "#6b7280",
     marginTop: 4,
   },
+  operationalCaseMeta: {
+    fontSize: 12,
+    color: "#7c3aed",
+    marginTop: 6,
+    fontWeight: 700,
+  },
   priorityPill: {
     color: "#ffffff",
     padding: "4px 10px",
@@ -136,6 +142,20 @@ export const styles: Record<string, CSSProperties> = {
   reasonText: {
     fontSize: 13,
     color: "#374151",
+    lineHeight: 1.5,
+    maxWidth: 420,
+  },
+  reasonPrimaryText: {
+    fontSize: 13,
+    color: "#111827",
+    lineHeight: 1.5,
+    maxWidth: 420,
+    fontWeight: 700,
+  },
+  reasonSecondaryText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#6b7280",
     lineHeight: 1.5,
     maxWidth: 420,
   },
@@ -174,10 +194,21 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     lineHeight: 1.4,
   },
-  availableText: {
+availableText: {
     fontSize: 13,
     color: "#166534",
     fontWeight: 600,
+  },
+  operationalCaseStatus: {
+    display: "inline-block",
+    background: "#f5f3ff",
+    border: "1px solid #ddd6fe",
+    color: "#7c3aed",
+    borderRadius: 12,
+    padding: "4px 10px",
+    fontSize: 12,
+    fontWeight: 700,
+    lineHeight: 1.4,
   },
   managementMetaText: {
     marginTop: 6,

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CaseloadItem } from "../types/caseload.types";
 import { fetchCaseload } from "../api/caseload";
+import { fetchOperationalCases } from "../api/operationalCases";
 import { API_URL } from "../config/api";
 import { getAuthToken } from "../store/authStore";
 
@@ -39,8 +40,21 @@ export function useCaseload() {
       setLoading(true);
       setError(null);
 
-      const data = await fetchCaseload();
-      setItems(data);
+      const [caseloadData, operationalCases] = await Promise.all([
+        fetchCaseload(),
+        fetchOperationalCases().catch(() => []),
+      ]);
+
+      const operationalCaseByPatientId = new Map(
+        operationalCases.map((item) => [item.patientId, item]),
+      );
+
+      setItems(
+        caseloadData.map((item) => ({
+          ...item,
+          operationalCase: operationalCaseByPatientId.get(item.patientId),
+        })),
+      );
     } catch {
       setError("No se pudo cargar el caseload.");
     } finally {

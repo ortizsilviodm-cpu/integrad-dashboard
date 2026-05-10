@@ -21,6 +21,21 @@ export type CaseloadSlaStatus =
   | "DUE_SOON"
   | "OVERDUE";
 
+export type CaseloadOperationalCaseSummary = {
+  id: string;
+  operationalMotive:
+    | "THERAPEUTIC_ABANDONMENT_RISK"
+    | "GLUCOSE_RISK"
+    | "NEEDS_EDUCATION"
+    | "CONTACT_DIFFICULTY"
+    | "INTERDISCIPLINARY_INTERVENTION_REQUIRED";
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  status: "OPEN" | "IN_PROGRESS" | "STABILIZED" | "RESOLVED" | "REOPENED";
+  contextualSummary: string | null;
+  reopenedCount: number;
+  updatedAt: string;
+};
+
 export type CaseloadItem = {
   caseId: string;
   patientId: string;
@@ -50,4 +65,5 @@ export type CaseloadItem = {
   followupStatus: CaseloadFollowupStatus;
   managedByName: string | null;
   managedAt: string | null;
+  operationalCase?: CaseloadOperationalCaseSummary;
 };
