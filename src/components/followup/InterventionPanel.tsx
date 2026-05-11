@@ -10,6 +10,8 @@ import type {
 } from "../../api/followup";
 import { usePatientContext } from "../../hooks/usePatientContext";
 import { usePatientTimeline } from "../../hooks/usePatientTimeline";
+import { InterventionSummary } from "./InterventionSummary";
+import { RiskBrief } from "./RiskBrief";
 import {
   formatCategoryLabel,
   formatDateTime,
@@ -698,7 +700,18 @@ export function InterventionPanel({
           </button>
         </div>
 
-        <div style={bodyStyle}>
+<div style={bodyStyle}>
+          {/* Resumen operacional simplificado */}
+          <InterventionSummary
+            event={event}
+            managedByName={event.assignedTo?.displayName ?? null}
+          />
+
+          {/* Resumen de riesgo conciso */}
+          {riskStratification && (
+            <RiskBrief riskStratification={riskStratification} />
+          )}
+
           <section style={riskCardStyle}>
             <div style={timelineHeaderStyle}>
               <div style={timelineTitleBlockStyle}>
