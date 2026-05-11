@@ -9,6 +9,7 @@ import type {
 } from "../../api/followup";
 import type { PatientContextData } from "../../hooks/usePatientContext";
 import OperationalNarrative from "./OperationalNarrative";
+import OperationalActionSummary from "./OperationalActionSummary";
 import HumanTimeline from "./HumanTimeline";
 import PatientEventsTable from "./PatientEventsTable";
 import PatientWorkspaceHeader from "./PatientWorkspaceHeader";
@@ -142,7 +143,15 @@ export default function PatientWorkspaceView({
         </div>
       )}
 
-      {/* 2. TIMELINE HUMANO — solo si hay eventos */}
+      {/* 2. OWNERSHIP + PRÓXIMA ACCIÓN */}
+      <OperationalActionSummary
+        operationalCase={operationalCase}
+        managedByName={managedByName}
+        priorityLevel={visibleRows[0]?.severity === "CRITICAL" ? "P1" : visibleRows[0]?.severity === "HIGH" ? "P2" : "P3"}
+        managementStatus={visibleRows[0]?.status === "IN_PROGRESS" ? "IN_PROGRESS" : "AVAILABLE"}
+      />
+
+      {/* 3. TIMELINE HUMANO — solo si hay eventos */}
       <HumanTimeline
         events={visibleRows}
         operationalMotive={operationalCase?.operationalMotive ?? null}

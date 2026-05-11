@@ -291,3 +291,123 @@ export function buildPatientSecondaryText(item: CaseloadItem): string {
 
   return `Paciente ${item.patientId.slice(0, 8)} · Sin contacto registrado`;
 }
+
+/**
+ * Tipo para representar el ownership y próxima acción del caso.
+ */
+export type OwnershipInfo = {
+  responsibleName: string | null;
+  responsibleRole: string | null;
+  statusText: string;
+  statusColor: string;
+  nextActionText: string;
+  nextActionPriority: "critical" | "warning" | "info" | "neutral";
+  pendingItemText: string | null;
+};
+
+/**
+ * Construye información de ownership y próxima acción legible.
+ */
+export function buildOwnershipAndNextAction(
+  operationalCase: CaseloadItem["operationalCase"] | undefined,
+  managedByName: string | null,
+  priorityLevel: CaseloadItem["priorityLevel"],
+  managementStatus: CaseloadItem["managementStatus"],
+): OwnershipInfo {
+  // Determinar responsable
+  const responsibleName = managedByName ?? null;
+  const responsibleRole = managedByName ? "Responsable de caso" : "Sin asignar";
+
+  // Determinar estado operativo y color
+  let statusText = "Abierto";
+  let statusColor = "#ef4444"; // red
+
+  if (operationalCase) {
+    switch (operationalCase.status) {
+      case "OPEN":
+        statusText = "Abierto — sin intervención";
+        statusColor = "#ef4444";
+        break;
+      case "IN_PROGRESS":
+        statusText = managedByName ? `En gestión por ${managedByName}` : "En gestión — sin responsable";
+        statusColor = "#f59e0b"; // amber
+        break;
+      case "STABILIZED":
+        statusText = "Estabilizado — en mantenimiento";
+        statusColor = "#3b82f6"; // blue
+        break;
+      case "RESOLVED":
+        statusText = "Resuelto";
+        statusColor = "#10b981"; // green
+        break;
+      case "REOPENED":
+        statusText = "Reabierto — requiere revisión";
+        statusColor = "#8b5cf6"; // purple
+        break;
+      default:
+        statusText = "Estado desconocido";
+        statusColor = "#6b7280";
+    }
+  } else if (managementStatus === "IN_PROGRESS") {
+    statusText = managedByName
+      ? `En gestión por ${managedByName}`
+      : "En gestión — pendiente de asignar";
+    statusColor = "#f59e0b";
+  } else {
+    statusText = "Caso disponible";
+    statusColor = "#10b981";
+  }
+
+  // Determinar próxima acción basada en motivo
+  let nextActionText = "Revisar caso y definir plan de intervención";
+  let nextActionPriority: OwnershipInfo["nextActionPriority"] = "info";
+
+  if (operationalCase?.operationalMotive) {
+    switch (operationalCase.operationalMotive) {
+      case "THERAPEUTIC_ABANDONMENT_RISK":
+        nextActionText = "Contactar al paciente para validar continuidad del tratamiento";
+        nextActionPriority = "critical";
+        break;
+      case "GLUCOSE_RISK":
+        nextActionText = "Revisar glucemias recientes y ajustar plan según necesidad";
+        nextActionPriority = "warning";
+        break;
+      case "NEEDS_EDUCATION":
+        nextActionText = "Programar intervención educativa según contexto del paciente";
+        nextActionPriority = "info";
+        break;
+      case "CONTACT_DIFFICULTY":
+        nextActionText = "Intentar contacto por medios alternativos y documentar intentos";
+        nextActionPriority = "warning";
+        break;
+      case "INTERDISCIPLINARY_INTERVENTION_REQUIRED":
+        nextActionText = "Coordinar intervención interdisciplinaria con el equipo";
+        nextActionPriority = "warning";
+        break;
+    }
+  } else if (priorityLevel === "P1") {
+    nextActionText = "Intervención inmediata requerida — contactar paciente urgentemente";
+    nextActionPriority = "critical";
+  } else if (priorityLevel === "P2") {
+    nextActionText = "Seguimiento urgente — contactar en el día";
+    nextActionPriority = "warning";
+  }
+
+  // Determinar pendiente (basado en contextualSummary o inference)
+  let pendingItemText: string | null = null;
+
+  if (operationalCase?.contextualSummary && operationalCase.status !== "RESOLVED") {
+    // Usar el resumen contextual como pendiente si hay
+    pendingItemText = operationalCase.contextualSummary;
+  }
+
+  return {
+    responsibleName,
+    responsibleRole,
+    statusText,
+    statusColor,
+    nextActionText,
+    nextActionPriority,
+    pendingItemText,
+  };
+}
