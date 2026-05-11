@@ -1,4 +1,5 @@
 import type { ComponentType, CSSProperties, Dispatch, ReactNode, SetStateAction } from "react";
+import type { CaseloadOperationalCaseSummary } from "../../types/caseload.types";
 import type { PatientSummaryResponse } from "../../api/patientSummary";
 import type {
   FollowupAssigned,
@@ -7,6 +8,7 @@ import type {
   FollowupSla,
 } from "../../api/followup";
 import type { PatientContextData } from "../../hooks/usePatientContext";
+import OperationalNarrative from "./OperationalNarrative";
 import PatientEventsTable from "./PatientEventsTable";
 import PatientWorkspaceHeader from "./PatientWorkspaceHeader";
 
@@ -27,6 +29,8 @@ type PatientWorkspaceViewProps = {
   patientContext: PatientContextData;
   patientContextLoading: boolean;
   patientContextError: string | null;
+  operationalCase: CaseloadOperationalCaseSummary | null;
+  operationalCaseLoading: boolean;
   status: FollowupEventStatus;
   assigned: FollowupAssigned;
   sla: FollowupSla;
@@ -69,10 +73,11 @@ export default function PatientWorkspaceView({
   patientError,
   patientSummary,
   initialPatientId,
-  initialEventId,
   patientContext,
   patientContextLoading,
   patientContextError,
+  operationalCase,
+  operationalCaseLoading,
   status,
   assigned,
   sla,
@@ -113,11 +118,34 @@ export default function PatientWorkspaceView({
         patientError={patientError}
         patientSummary={patientSummary}
         initialPatientId={initialPatientId}
-        initialEventId={initialEventId}
         patientContext={patientContext}
         patientContextLoading={patientContextLoading}
         patientContextError={patientContextError}
       />
+
+      {/* Narrativa operacional — visible cuando hay operational case */}
+      {operationalCase && !operationalCaseLoading && (
+        <OperationalNarrative
+          operationalCase={operationalCase}
+          patientName={patientSummary?.patient.fullName ?? initialPatientId ?? "—"}
+        />
+      )}
+
+      {operationalCaseLoading && (
+        <div
+          style={{
+            background: "#f9fafb",
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 16,
+            fontSize: 13,
+            color: "#6b7280",
+          }}
+        >
+          Cargando narrativa operacional…
+        </div>
+      )}
 
       <div className="app-header" style={{ marginBottom: 12 }}>
         <div>

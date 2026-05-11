@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { PatientSummaryResponse } from "../../api/patientSummary";
 import type { PatientContextData } from "../../hooks/usePatientContext";
+import { buildPatientSecondaryText } from "../../logic/caseload.logic";
 
 type PatientWorkspaceHeaderProps = {
   isWorkspacePanelOpen: boolean;
@@ -10,7 +11,6 @@ type PatientWorkspaceHeaderProps = {
   patientError: string | null;
   patientSummary: PatientSummaryResponse | null;
   initialPatientId: string | null;
-  initialEventId: string | null;
   patientContext: PatientContextData;
   patientContextLoading: boolean;
   patientContextError: string | null;
@@ -24,7 +24,6 @@ export default function PatientWorkspaceHeader({
   patientError,
   patientSummary,
   initialPatientId,
-  initialEventId,
   patientContext,
   patientContextLoading,
   patientContextError,
@@ -92,8 +91,11 @@ export default function PatientWorkspaceHeader({
               {patientSummary.patient.fullName}
             </div>
             <div style={{ fontSize: 12, color: "#374151" }}>
-              DOC: {patientSummary.patient.documentNumber || patientSummary.patient.documentId} | {patientSummary.patient.healthPlan || patientSummary.patient.payerCode || "Sin obra social"} | ADH: {patientSummary.adherence.coveragePercent}% en {patientSummary.adherence.daysWindow} días
-              {initialEventId ? ` | contexto: ${initialEventId.slice(0, 8)}` : ""}
+              {buildPatientSecondaryText({
+                patientId: patientSummary.patient.id,
+                lastContactAt: null,
+              } as any)}
+              {initialPatientId ? ` | contexto: ${initialPatientId.slice(0, 8)}` : ""}
             </div>
           </>
         ) : (
@@ -115,7 +117,7 @@ export default function PatientWorkspaceHeader({
             lineHeight: 1.5,
           }}
         >
-          Estás viendo el <strong>workspace del paciente</strong>. Si querés salir de este contexto y volver a la bandeja completa, usá <strong>“Volver al caseload”</strong>. Si querés retomar la intervención puntual, usá <strong>“Gestionar”</strong> en la fila del evento.
+          Estás viendo el <strong>workspace del paciente</strong>. Si querés salir de este contexto y volver a la bandeja completa, usá <strong>{"Volver al caseload"}</strong>. Si querés retomar la intervención puntual, usá <strong>{"Gestionar"}</strong> en la fila del evento.
         </div>
       ) : null}
 

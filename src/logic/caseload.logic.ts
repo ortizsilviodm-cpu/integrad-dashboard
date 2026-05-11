@@ -166,19 +166,58 @@ function formatOperationalCaseStatus(
   }
 }
 
-function formatOperationalCasePriority(
-  priority: NonNullable<CaseloadItem["operationalCase"]>["priority"],
-): string {
-  switch (priority) {
-    case "LOW":
-      return "Baja";
-    case "MEDIUM":
-      return "Media";
-    case "HIGH":
-      return "Alta";
-    case "CRITICAL":
-      return "Crítica";
+/* nada */
+
+export type SuggestedActionSeverity = "critical" | "warning" | "info" | "stable";
+
+export type SuggestedAction = {
+  text: string;
+  severity: SuggestedActionSeverity;
+};
+
+export function buildSuggestedAction(item: CaseloadItem): SuggestedAction {
+  // 1. Si hay operational case con resumen contextual, usarlo como base
+  if (item.operationalCase?.contextualSummary) {
+    const severity: SuggestedActionSeverity =
+      item.operationalCase.priority === "CRITICAL" || item.operationalCase.priority === "HIGH"
+        ? "critical"
+        : item.operationalCase.priority === "MEDIUM"
+          ? "warning"
+          : "info";
+
+    return {
+      text: item.operationalCase.contextualSummary,
+      severity,
+    };
   }
+
+  // 2. Si hay motivo operacional, generar acción a partir de él
+  const motive = buildOperationalCaseMotiveLabel(item);
+  if (motive) {
+    const severity: SuggestedActionSeverity =
+      item.priorityLevel === "P1" ? "critical" : item.priorityLevel === "P2" ? "warning" : "info";
+
+    return {
+      text: `Revisar caso: ${motive.toLowerCase()}.`,
+      severity,
+    };
+  }
+
+  // 3. Fallback por prioridad del followup
+  if (item.priorityLevel === "P1") {
+    return { text: "Intervención inmediata requerida.", severity: "critical" };
+  }
+
+  if (item.priorityLevel === "P2") {
+    return { text: "Seguimiento urgente programado.", severity: "warning" };
+  }
+
+  if (item.priorityLevel === "P3") {
+    return { text: "Atención sugerida según seguimiento.", severity: "info" };
+  }
+
+  // 4. Fallback genérico
+  return { text: "Sin acción sugerida por el momento.", severity: "stable" };
 }
 
 export function buildPatientSecondaryText(item: CaseloadItem): string {

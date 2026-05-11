@@ -24,7 +24,9 @@ import {
   createEducationInteraction,
   type EducationInteractionRow,
 } from "../api/education";
+import { fetchOperationalCases } from "../api/operationalCases";
 import { getAuthToken } from "../store/authStore";
+import { type CaseloadOperationalCaseSummary } from "../types/caseload.types";
 import InterventionPanelContainer from "../components/followup/InterventionPanelContainer";
 import CaseloadGlobalView from "../components/followup/CaseloadGlobalView";
 import PatientWorkspaceView from "../components/followup/PatientWorkspaceView";
@@ -559,7 +561,33 @@ export default function FollowupCaseloadPage({
   const [closingResolutionType, setClosingResolutionType] =
     useState<FollowupResolutionType | null>(null);
   const [closingNote, setClosingNote] = useState("");
-  const [confirmingClose, setConfirmingClose] = useState(false);
+const [confirmingClose, setConfirmingClose] = useState(false);
+
+  /* ----------------------------- */
+  /* Operational Case              */
+  /* ----------------------------- */
+
+  const [operationalCase, setOperationalCase] = useState<CaseloadOperationalCaseSummary | null>(null);
+  const [operationalCaseLoading, setOperationalCaseLoading] = useState(false);
+
+  useEffect(() => {
+    if (!initialPatientId) {
+      setOperationalCase(null);
+      return;
+    }
+
+    setOperationalCaseLoading(true);
+    setOperationalCase(null);
+
+    void fetchOperationalCases().then((cases) => {
+      const found = cases.find((c) => c.patientId === initialPatientId);
+      setOperationalCase(found ?? null);
+      setOperationalCaseLoading(false);
+    }).catch(() => {
+      setOperationalCase(null);
+      setOperationalCaseLoading(false);
+    });
+  }, [initialPatientId]);
 
   /* ----------------------------- */
   /* Panel Acciones                */
@@ -1123,7 +1151,9 @@ export default function FollowupCaseloadPage({
           initialEventId={initialEventId}
           patientContext={patientContext.data}
           patientContextLoading={patientContext.loading}
-          patientContextError={patientContext.error}
+patientContextError={patientContext.error}
+          operationalCase={operationalCase}
+          operationalCaseLoading={operationalCaseLoading}
           status={status}
           assigned={assigned}
           sla={sla}
