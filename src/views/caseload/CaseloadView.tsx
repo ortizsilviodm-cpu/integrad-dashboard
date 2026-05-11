@@ -13,6 +13,7 @@ import {
   buildSourceLabels,
   getAvatarSeverity,
   getPriorityColor,
+  getPriorityHierarchy,
   getPriorityHumanLabel,
 } from "../../logic/caseload.logic";
 import {
@@ -206,9 +207,20 @@ export default function CaseloadView({
                             {item.priorityLabel}
                           </div>
 
-                          <div style={styles.priorityHumanLabel}>
-                            {getPriorityHumanLabel(item.priorityLevel)}
-                          </div>
+                          {(() => {
+                            const hierarchy = getPriorityHierarchy(item.priorityLevel);
+                            const style =
+                              hierarchy === "high"
+                                ? styles.priorityHigh
+                                : hierarchy === "medium"
+                                  ? styles.priorityMedium
+                                  : styles.priorityLow;
+                            return (
+                              <div style={style}>
+                                {getPriorityHumanLabel(item.priorityLevel)}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         <td style={styles.td}>

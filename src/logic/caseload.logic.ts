@@ -30,6 +30,16 @@ export function getPriorityHumanLabel(
   }
 }
 
+export type PriorityHierarchy = "high" | "medium" | "low";
+
+export function getPriorityHierarchy(
+  level: CaseloadItem["priorityLevel"],
+): PriorityHierarchy {
+  if (level === "P1") return "high";
+  if (level === "P2") return "medium";
+  return "low";
+}
+
 export function getAvatarSeverity(item: CaseloadItem): string {
   if (item.priorityLevel === "P1") return "CRITICAL";
   if (item.priorityLevel === "P2") return "HIGH";
@@ -83,14 +93,14 @@ export function buildOperationalCaseSecondaryText(
 ): string | null {
   if (!item.operationalCase) return null;
 
-  const parts: string[] = [];
+  if (
+    item.operationalCase.contextualSummary &&
+    item.operationalCase.contextualSummary.trim().length > 0
+  ) {
+    return item.operationalCase.contextualSummary.trim();
+  }
 
-  parts.push(`Estado: ${formatOperationalCaseStatus(item.operationalCase.status)}`);
-  parts.push(
-    `Prioridad: ${formatOperationalCasePriority(item.operationalCase.priority)}`,
-  );
-
-  return parts.join(" • ");
+  return null;
 }
 
 export function buildFollowupStatusLabel(item: CaseloadItem): string {
