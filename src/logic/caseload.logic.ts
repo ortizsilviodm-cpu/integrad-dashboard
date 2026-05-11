@@ -220,6 +220,70 @@ export function buildSuggestedAction(item: CaseloadItem): SuggestedAction {
   return { text: "Sin acción sugerida por el momento.", severity: "stable" };
 }
 
+/**
+ * Construye una narrativa de ownership legible para el header del workspace.
+ */
+export function buildOwnershipText(
+  item: CaseloadItem,
+  managedByName: string | null,
+): string {
+  if (managedByName) {
+    return `Caso gestionado por ${managedByName}`;
+  }
+
+  if (item.managementStatus === "IN_PROGRESS") {
+    return "Caso en gestión (responsable no asignado aún)";
+  }
+
+  return "Caso disponible — sin gestor asignado";
+}
+
+/**
+ * Etiqueta legible del estado operativo del caso.
+ */
+export function buildHumanOperationalStatus(
+  status: NonNullable<CaseloadItem["operationalCase"]>["status"],
+): string {
+  switch (status) {
+    case "OPEN":
+      return "Recién creado";
+    case "IN_PROGRESS":
+      return "En seguimiento activo";
+    case "STABILIZED":
+      return "Estabilizado";
+    case "RESOLVED":
+      return "Resuelto";
+    case "REOPENED":
+      return "Reabierto — requiere revisión";
+  }
+}
+
+/**
+ * Resume la situación del paciente en una frase legible.
+ */
+export function buildPatientSituationSummary(item: CaseloadItem): string {
+  const motive = buildOperationalCaseMotiveLabel(item);
+  const oc = item.operationalCase;
+
+  if (oc && oc.status === "RESOLVED") {
+    return `Caso resuelto — fue por ${motive ? motive.toLowerCase() : "motivo no especificado"}`;
+  }
+
+  if (oc && oc.status === "STABILIZED") {
+    return `Caso estabilizado — ${motive ? motive.toLowerCase() : "en seguimiento"}`;
+  }
+
+  if (oc && oc.contextualSummary) {
+    return oc.contextualSummary;
+  }
+
+  if (motive) {
+    return `Requiere atención: ${motive.toLowerCase()}`;
+  }
+
+  return "Caso activo — revisar estado del paciente";
+}
+
 export function buildPatientSecondaryText(item: CaseloadItem): string {
   if (item.lastContactAt) {
     return `Paciente ${item.patientId.slice(0, 8)} · Último contacto ${new Date(item.lastContactAt).toLocaleDateString()}`;

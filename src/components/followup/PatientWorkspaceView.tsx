@@ -9,6 +9,7 @@ import type {
 } from "../../api/followup";
 import type { PatientContextData } from "../../hooks/usePatientContext";
 import OperationalNarrative from "./OperationalNarrative";
+import HumanTimeline from "./HumanTimeline";
 import PatientEventsTable from "./PatientEventsTable";
 import PatientWorkspaceHeader from "./PatientWorkspaceHeader";
 
@@ -18,19 +19,19 @@ type PatientAvatarProps = {
 };
 
 type PatientWorkspaceViewProps = {
-  isWorkspacePanelOpen: boolean;
+  isWorkspacePanelOpen?: boolean;
   onBackToCaseload?: () => void;
   backButtonStyle: CSSProperties;
-  patientLoading: boolean;
-  patientError: string | null;
+  patientLoading?: boolean;
+  patientError?: string | null;
   patientSummary: PatientSummaryResponse | null;
   initialPatientId: string | null;
-  initialEventId: string | null;
-  patientContext: PatientContextData;
-  patientContextLoading: boolean;
-  patientContextError: string | null;
+  initialEventId?: string | null;
+  patientContext?: PatientContextData;
+  patientContextLoading?: boolean;
+  patientContextError?: string | null;
   operationalCase: CaseloadOperationalCaseSummary | null;
-  operationalCaseLoading: boolean;
+  operationalCaseLoading?: boolean;
   status: FollowupEventStatus;
   assigned: FollowupAssigned;
   sla: FollowupSla;
@@ -66,18 +67,13 @@ type PatientWorkspaceViewProps = {
 };
 
 export default function PatientWorkspaceView({
-  isWorkspacePanelOpen,
   onBackToCaseload,
   backButtonStyle,
-  patientLoading,
-  patientError,
   patientSummary,
   initialPatientId,
-  patientContext,
-  patientContextLoading,
-  patientContextError,
   operationalCase,
   operationalCaseLoading,
+  visibleRows,
   status,
   assigned,
   sla,
@@ -88,7 +84,6 @@ export default function PatientWorkspaceView({
   loadingMore,
   error,
   successMessage,
-  visibleRows,
   hasNext,
   currentUserEmail,
   loadFirstPage,
@@ -108,26 +103,25 @@ export default function PatientWorkspaceView({
   btnPrimary,
   btnBase,
 }: PatientWorkspaceViewProps) {
+  const patientName = patientSummary?.patient.fullName ?? initialPatientId ?? null;
+  const managedByName = visibleRows[0]?.assignedTo?.displayName ?? null;
+
   return (
     <>
+      {/* Header minimalista */}
       <PatientWorkspaceHeader
-        isWorkspacePanelOpen={isWorkspacePanelOpen}
         onBackToCaseload={onBackToCaseload}
         backButtonStyle={backButtonStyle}
-        patientLoading={patientLoading}
-        patientError={patientError}
-        patientSummary={patientSummary}
-        initialPatientId={initialPatientId}
-        patientContext={patientContext}
-        patientContextLoading={patientContextLoading}
-        patientContextError={patientContextError}
+        patientName={patientName}
+        patientId={initialPatientId}
       />
 
-      {/* Narrativa operacional — visible cuando hay operational case */}
+      {/* 1. NARRATIVA OPERACIONAL — dominante, arriba de todo */}
       {operationalCase && !operationalCaseLoading && (
         <OperationalNarrative
           operationalCase={operationalCase}
-          patientName={patientSummary?.patient.fullName ?? initialPatientId ?? "—"}
+          patientName={patientName ?? "—"}
+          managedByName={managedByName}
         />
       )}
 
@@ -137,57 +131,73 @@ export default function PatientWorkspaceView({
             background: "#f9fafb",
             border: "1px solid #e5e7eb",
             borderRadius: 12,
-            padding: 12,
+            padding: 16,
             marginBottom: 16,
             fontSize: 13,
             color: "#6b7280",
+            textAlign: "center",
           }}
         >
           Cargando narrativa operacional…
         </div>
       )}
 
-      <div className="app-header" style={{ marginBottom: 12 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Eventos activos del paciente</h1>
-          <p style={{ margin: "6px 0 0" }}>
-            Eventos clínicos y operativos vinculados al paciente actualmente visualizado.
-          </p>
-        </div>
-      </div>
-
-      <PatientEventsTable
-        isPatientMode
-        status={status}
-        assigned={assigned}
-        sla={sla}
-        setStatus={setStatus}
-        setAssigned={setAssigned}
-        setSla={setSla}
-        loading={loading}
-        loadingMore={loadingMore}
-        error={error}
-        successMessage={successMessage}
-        visibleRows={visibleRows}
-        hasNext={hasNext}
-        currentUserEmail={currentUserEmail}
-        loadFirstPage={loadFirstPage}
-        loadMore={loadMore}
-        openActions={openActions}
-        isLockedForCurrentUser={isLockedForCurrentUser}
-        statusCellContent={statusCellContent}
-        eventLabel={eventLabel}
-        probableCauseLabel={probableCauseLabel}
-        categoryLabel={categoryLabel}
-        adherenceLabel={adherenceLabel}
-        adherencePillStyle={adherencePillStyle}
-        adherenceSecondaryLabel={adherenceSecondaryLabel}
-        severityPillStyle={severityPillStyle}
-        severityLabel={severityLabel}
-        PatientAvatar={PatientAvatar}
-        btnPrimary={btnPrimary}
-        btnBase={btnBase}
+      {/* 2. TIMELINE HUMANO — solo si hay eventos */}
+      <HumanTimeline
+        events={visibleRows}
+        operationalMotive={operationalCase?.operationalMotive ?? null}
+        managedByName={managedByName}
+        currentStatus={operationalCase?.status ?? status}
       />
+
+      {/* 3. SECCIÓN DE EVENTOS — tabla simplificada */}
+      <div style={{ marginTop: 16 }}>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "#64748b",
+            marginBottom: 12,
+            paddingBottom: 8,
+            borderBottom: "1px solid #e2e8f0",
+          }}
+        >
+          Casos activos del paciente
+        </div>
+
+        <PatientEventsTable
+          isPatientMode
+          status={status}
+          assigned={assigned}
+          sla={sla}
+          setStatus={setStatus}
+          setAssigned={setAssigned}
+          setSla={setSla}
+          loading={loading}
+          loadingMore={loadingMore}
+          error={error}
+          successMessage={successMessage}
+          visibleRows={visibleRows}
+          hasNext={hasNext}
+          currentUserEmail={currentUserEmail}
+          loadFirstPage={loadFirstPage}
+          loadMore={loadMore}
+          openActions={openActions}
+          isLockedForCurrentUser={isLockedForCurrentUser}
+          statusCellContent={statusCellContent}
+          eventLabel={eventLabel}
+          probableCauseLabel={probableCauseLabel}
+          categoryLabel={categoryLabel}
+          adherenceLabel={adherenceLabel}
+          adherencePillStyle={adherencePillStyle}
+          adherenceSecondaryLabel={adherenceSecondaryLabel}
+          severityPillStyle={severityPillStyle}
+          severityLabel={severityLabel}
+          PatientAvatar={PatientAvatar}
+          btnPrimary={btnPrimary}
+          btnBase={btnBase}
+        />
+      </div>
     </>
   );
 }
