@@ -21,14 +21,11 @@ import {
   btnPrimary,
   btnSecondary,
 } from "../../styles/caseload.styles";
+import type { CaseloadWorkspaceContext } from "../../types/caseload.types";
 import { useCaseload } from "../../hooks/useCaseload";
 
 type CaseloadViewProps = {
-  onOpenWorkspace?: (input: {
-    patientId: string;
-    followupEventId?: string | null;
-    caseSummary?: string | null;
-  }) => void;
+  onOpenWorkspace?: (input: CaseloadWorkspaceContext) => void;
 };
 
 export default function CaseloadView({
@@ -60,6 +57,7 @@ export default function CaseloadView({
     patientId: string;
     caseId: string;
     visibleReason: string;
+    operationalCaseId?: string | null;
   }) {
     const result = await handleAction(input.caseId, "TAKE");
 
@@ -67,11 +65,12 @@ export default function CaseloadView({
       return;
     }
 
-    // patientId como unidad principal; followupEventId acompaña si existe
+    // Priorizar contexto operacional; fallback al flujo legacy
     onOpenWorkspace?.({
       patientId: input.patientId,
       followupEventId: result.workspaceTarget?.followupEventId ?? null,
       caseSummary: input.visibleReason,
+      operationalCaseId: input.operationalCaseId ?? null,
     });
   }
 
@@ -307,6 +306,7 @@ export default function CaseloadView({
                                     patientId: item.patientId,
                                     caseId: item.caseId,
                                     visibleReason: item.visibleReason,
+                                    operationalCaseId: item.operationalCase?.id ?? null,
                                   })
                                 }
                                 disabled={actingId === item.caseId}

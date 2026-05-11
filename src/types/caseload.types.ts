@@ -36,6 +36,13 @@ export type CaseloadOperationalCaseSummary = {
   updatedAt: string;
 };
 
+export type CaseloadWorkspaceContext = {
+  patientId: string;
+  followupEventId?: string | null;
+  caseSummary?: string | null;
+  operationalCaseId?: string | null;
+};
+
 export type CaseloadItem = {
   caseId: string;
   patientId: string;
