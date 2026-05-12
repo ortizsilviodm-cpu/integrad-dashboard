@@ -13,6 +13,38 @@ import { usePatientTimeline } from "../../hooks/usePatientTimeline";
 import { InterventionSummary } from "./InterventionSummary";
 import { RiskBrief } from "./RiskBrief";
 import {
+  overlayStyle,
+  panelStyle,
+  headerStyle,
+  bodyStyle,
+  topGridStyle,
+  middleGridStyle,
+  sectionCardStyle,
+  interpretationStyle,
+  alertStyle,
+  listStyle,
+  listRowStyle,
+  historyCardStyle,
+  historyBodyStyle,
+  leftColumnStyle,
+  rightColumnStyle,
+  criticalGlucoseContextStyle,
+  glucoseTrendStyle,
+  timelineHeaderStyle,
+  timelineTitleBlockStyle,
+  timelineToggleButtonStyle,
+  timelineMetaStyle,
+  timelineItemLeftStyle,
+  timelineBadgeBaseStyle,
+  timelineFooterNoteStyle,
+  riskCardStyle,
+  riskGridStyle,
+  pillBaseStyle,
+  riskMetaGridStyle,
+  riskListStyle,
+  riskListRowStyle,
+} from "./interventionPanel.styles";
+import {
   formatCategoryLabel,
   formatDateTime,
   formatEventIcon,
@@ -47,234 +79,7 @@ const STATUS_LABEL: Record<FollowupEventStatus, string> = {
 
 const TIMELINE_PREVIEW_LIMIT = 5;
 
-const overlayStyle: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.48)",
-  backdropFilter: "blur(8px)",
-  zIndex: 9998,
-};
-
-const panelStyle: CSSProperties = {
-  position: "fixed",
-  top: 0,
-  right: 0,
-  width: "calc(100vw - 84px)",
-  maxWidth: "none",
-  height: "100vh",
-  background: "#f8fafc",
-  borderLeft: "1px solid #e5e7eb",
-  boxShadow: "-24px 0 56px rgba(15, 23, 42, 0.28)",
-  zIndex: 9999,
-  display: "flex",
-  flexDirection: "column",
-};
-
-const headerStyle: CSSProperties = {
-  padding: "20px 24px",
-  borderBottom: "1px solid #e5e7eb",
-  display: "flex",
-  alignItems: "flex-start",
-  gap: 12,
-  background: "#ffffff",
-};
-
-const bodyStyle: CSSProperties = {
-  padding: 24,
-  overflowY: "auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: 18,
-};
-
-const topGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 18,
-  alignItems: "start",
-};
-
-const middleGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 18,
-  alignItems: "start",
-};
-
-const sectionCardStyle: CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 16,
-  padding: 16,
-  background: "#ffffff",
-};
-
-const interpretationStyle: CSSProperties = {
-  ...sectionCardStyle,
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-};
-
-const alertStyle: CSSProperties = {
-  ...sectionCardStyle,
-  background: "#fff7ed",
-  border: "1px solid #fed7aa",
-  color: "#9a3412",
-};
-
-const listStyle: CSSProperties = {
-  display: "grid",
-  gap: 10,
-};
-
-const listRowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #e5e7eb",
-  background: "#f9fafb",
-};
-
-const historyCardStyle: CSSProperties = {
-  ...sectionCardStyle,
-  padding: 16,
-};
-
-const historyBodyStyle: CSSProperties = {
-  ...listStyle,
-  minHeight: 56,
-};
-
-const leftColumnStyle: CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gap: 4,
-};
-
-const rightColumnStyle: CSSProperties = {
-  flexShrink: 0,
-  fontSize: 12,
-  color: "#6b7280",
-  whiteSpace: "nowrap",
-};
-
-const criticalGlucoseContextStyle: CSSProperties = {
-  marginTop: 12,
-  padding: "10px 12px",
-  borderRadius: 12,
-  background: "#fee2e2",
-  border: "1px solid #fecaca",
-  color: "#991b1b",
-  fontSize: 13,
-  fontWeight: 600,
-  lineHeight: 1.5,
-};
-
-const glucoseTrendStyle: CSSProperties = {
-  marginBottom: 12,
-  padding: "10px 12px",
-  borderRadius: 12,
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  color: "#1d4ed8",
-  fontSize: 13,
-  fontWeight: 700,
-  lineHeight: 1.5,
-};
-
-const timelineHeaderStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  marginBottom: 10,
-};
-
-const timelineTitleBlockStyle: CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gap: 4,
-};
-
-const timelineToggleButtonStyle: CSSProperties = {
-  padding: "6px 10px",
-  borderRadius: 999,
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
-  color: "#374151",
-  fontWeight: 600,
-  cursor: "pointer",
-  fontSize: 12,
-};
-
-const timelineMetaStyle: CSSProperties = {
-  fontSize: 12,
-  color: "#6b7280",
-};
-
-const timelineItemLeftStyle: CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gap: 6,
-};
-
-const timelineBadgeBaseStyle: CSSProperties = {
-  display: "inline-block",
-  padding: "4px 8px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 700,
-};
-
-const timelineFooterNoteStyle: CSSProperties = {
-  marginTop: 10,
-  fontSize: 12,
-  color: "#6b7280",
-};
-
-const riskCardStyle: CSSProperties = {
-  ...sectionCardStyle,
-  background: "#f8fafc",
-};
-
-const riskGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 18,
-  alignItems: "start",
-};
-
-const pillBaseStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "4px 10px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 700,
-};
-
-const riskMetaGridStyle: CSSProperties = {
-  display: "grid",
-  gap: 8,
-  fontSize: 13,
-  color: "#374151",
-  lineHeight: 1.5,
-};
-
-const riskListStyle: CSSProperties = {
-  display: "grid",
-  gap: 10,
-};
-
-const riskListRowStyle: CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
-  display: "grid",
-  gap: 6,
-};
+// Estilos movidos a interventionPanel.styles.ts
 
 function getSeverityPillStyle(raw: string): CSSProperties {
   const value = String(raw || "").toUpperCase().trim();
